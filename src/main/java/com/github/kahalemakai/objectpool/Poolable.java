@@ -20,23 +20,30 @@ package com.github.kahalemakai.objectpool;
  *
  * @param <T>
  *     type of elements in the pool
- * @param <E>
- *     type of exception that might get thrown on
- *     object creation or removal
  */
-public interface Poolable<T, E extends Exception> {
+public interface Poolable<T> {
 
     /**
      * Borrow an object from the pool in a blocking way.
      * @return
      *     an object from the pool
+     * @throws PoolException
+     *    if an object needs to be created before
+     *    handing it out, and the creation fails
      */
     T borrow();
     /**
      * Borrow an object from the pool and timeout after
      * {@code millis} milliseconds.
+     * @param millis
+     *     timeout in milliseconds
      * @return
      *     an object from the pool
+     * @throws InterruptedException
+     *     if timed out
+     * @throws PoolException
+     *    if an object needs to be created before
+     *    handing it out, and the creation fails
      */
     T borrow(long millis) throws InterruptedException;
 
@@ -59,6 +66,10 @@ public interface Poolable<T, E extends Exception> {
      * be thrown.
      * @param element
      *     the element to return
+     * @param millis
+     *     timeout in milliseconds
+     * @throws InterruptedException
+     *     if timed out
      */
     void unhand(T element, long millis) throws InterruptedException;
 
@@ -67,6 +78,9 @@ public interface Poolable<T, E extends Exception> {
      * and have expired.
      * <p>
      * This method should block.
+     * @throws PoolException
+     *     if a {@link #close(Object)} method needs to be
+     *     called, and fails
      */
     void evictAll();
     /**
@@ -74,6 +88,14 @@ public interface Poolable<T, E extends Exception> {
      * and have expired.
      * <p>
      * This method should timeout after {@code millis} milliseconds.
+     *
+     * @param millis
+     *     timeout in milliseconds
+     * @throws InterruptedException
+     *     if timed out
+     * @throws PoolException
+     *     if a {@link #close(Object)} method needs to be
+     *     called, and fails
      */
     void evictAll(long millis) throws InterruptedException;
 
@@ -86,6 +108,9 @@ public interface Poolable<T, E extends Exception> {
      * as well.
      * @param element
      *     the object to evict from the pool
+     * @throws PoolException
+     *     if a {@link #close(Object)} method needs to be
+     *     called, and fails
      */
     void evict(T element);
     /**
@@ -98,6 +123,13 @@ public interface Poolable<T, E extends Exception> {
      * as well.
      * @param element
      *     the object to evict from the pool
+     * @param millis
+     *     timeout in milliseconds
+     * @throws InterruptedException
+     *     if timed out
+     * @throws PoolException
+     *     if a {@link #close(Object)} method needs to be
+     *     called, and fails
      */
     void evict(T element, long millis) throws InterruptedException;
 
@@ -109,6 +141,9 @@ public interface Poolable<T, E extends Exception> {
      * as well.
      * @param element
      *     the element to remove
+     * @throws PoolException
+     *     if the associated {@link #close(Object)} method needs to be
+     *     called, and fails
      */
     void removeNow(T element);
     /**
@@ -120,6 +155,13 @@ public interface Poolable<T, E extends Exception> {
      * as well.
      * @param element
      *     the element to remove
+     * @param millis
+     *     timeout in milliseconds
+     * @throws InterruptedException
+     *     if timed out
+     * @throws PoolException
+     *     if the associated {@link #close(Object)} method needs to be
+     *     called, and fails
      */
     void removeNow(T element, long millis) throws InterruptedException;
 
@@ -193,10 +235,10 @@ public interface Poolable<T, E extends Exception> {
      * a new object, that may be borrowed.
      * @return
      *     a newly created object
-     * @throws E
-     *     exception that might get thrown on object creation
+     * @throws PoolException
+     *    if object creation fails
      */
-    T createElement() throws E;
+    T createElement();
 
     /**
      * Cleanup an object from the pool before removing it.
@@ -204,8 +246,16 @@ public interface Poolable<T, E extends Exception> {
      * This method should only be implemented if releasing an
      * external resource is required on removing an object from
      * the pool.
-     * @throws E
-     *     exception that might get thrown on object removal
+     * @throws PoolException
+     *    if closing the element fails
      */
-    default void close(T element) throws E { }
+    default void close(T element) { }
+
+    /**
+     * Get the time after which available (not borrowed)
+     * objects in the pool will expire and may be evicted.
+     * @return
+     *     time after which objects expire
+     */
+    long getExpirationTime();
 }
