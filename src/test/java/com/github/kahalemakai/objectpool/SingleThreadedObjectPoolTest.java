@@ -94,6 +94,6 @@ public class SingleThreadedObjectPoolTest {
         pool = new ObjectPool<>(
                 expirationTime,
                 counter::getAndIncrement,
-                (t) -> { counter.getAndDecrement(); });
+                (t) -> counter.getAndDecrement());
     }
 }
