@@ -42,6 +42,12 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+*.class
+.mtj.tmp/
+*.jar
+*.war
+*.ear
+hs_err_pid*
 .gradle
 /build/
 gradle-app.setting
@@ -58,9 +64,3 @@ tags
 /*.iwp
 /*.ipr
 /*.iml
-*.class
-.mtj.tmp/
-*.jar
-*.war
-*.ear
-hs_err_pid*
