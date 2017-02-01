@@ -9,13 +9,41 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 
-public class ObjectPoolTest {
+public class SingleThreadedObjectPoolTest {
     private ObjectPool<Integer> pool;
     private final long expirationTime = 1000;
     private AtomicInteger counter;
 
     @Test
     public void evict() throws Exception {
+        val borrowed = pool.borrow();
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        Thread.sleep(expirationTime);
+        pool.evict(borrowed);
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        pool.unhand(borrowed);
+        pool.evict(borrowed);
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        Thread.sleep(expirationTime);
+        pool.evict(borrowed);
+        assertEquals(Integer.valueOf(0), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(borrowed, pool.borrow());
+    }
+
+    @Test
+    public void remove() throws Exception {
+        val borrowed = pool.borrow();
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        pool.removeNow(borrowed);
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        pool.unhand(borrowed);
+        pool.removeNow(borrowed);
+        assertEquals(Integer.valueOf(0), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(borrowed, pool.borrow());
+    }
+
+    @Test
+    public void evictAll() throws Exception {
         val borrowed = pool.borrow();
         assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
         Thread.sleep(expirationTime);

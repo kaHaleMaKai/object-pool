@@ -259,11 +259,11 @@ public class ObjectPool<T> implements Poolable<T> {
      */
     @Override
     public void evict(T element) {
-        if (availableElementsEstimate() == 0) {
-            return;
-        }
         $lock.lock();
         try {
+            if (availableElements == 0) {
+                return;
+            }
             evictHelper(element);
         } finally {
             $lock.unlock();
@@ -364,13 +364,13 @@ public class ObjectPool<T> implements Poolable<T> {
     }
 
     private void evictOrRemoveNow(T element, boolean instantly) {
-        val timestamp = expiring.remove(element);
+        val timestamp = expiring.get(element);
         if (timestamp == null) {
             return;
         }
         if (!instantly) {
             val shiftedCurrentTimestamp = System.currentTimeMillis() - expirationTime;
-            if (shiftedCurrentTimestamp >= timestamp) {
+            if (timestamp > shiftedCurrentTimestamp) {
                 return;
             }
         }
@@ -378,8 +378,10 @@ public class ObjectPool<T> implements Poolable<T> {
             val exp = orderedExpiringObjects.get(i);
             if (exp.equals(element)) {
                 orderedExpiringObjects.remove(i);
+                expiring.remove(element);
                 availableElements--;
                 elementsCreated--;
+                this.close(element);
                 break;
             }
         }
