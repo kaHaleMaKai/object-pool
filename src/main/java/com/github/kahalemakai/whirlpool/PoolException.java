@@ -1,4 +1,4 @@
-package com.github.kahalemakai.objectpool;
+package com.github.kahalemakai.whirlpool;
 
 /**
  * The {@code PoolException} should be thrown

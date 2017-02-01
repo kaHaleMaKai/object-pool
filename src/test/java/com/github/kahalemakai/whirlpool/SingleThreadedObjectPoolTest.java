@@ -1,4 +1,4 @@
-package com.github.kahalemakai.objectpool;
+package com.github.kahalemakai.whirlpool;
 
 import lombok.val;
 import org.junit.Before;

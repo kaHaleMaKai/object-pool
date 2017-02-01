@@ -1,4 +1,4 @@
-package com.github.kahalemakai.objectpool;
+package com.github.kahalemakai.whirlpool;
 
 /**
  * The {@code Poolable} defines an interface for object pools.
