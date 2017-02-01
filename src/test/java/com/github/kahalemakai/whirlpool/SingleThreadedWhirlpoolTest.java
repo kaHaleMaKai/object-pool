@@ -5,14 +5,13 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 
 public class SingleThreadedWhirlpoolTest {
     private Whirlpool<Integer> pool;
     private final long expirationTime = 1000;
-    private AtomicInteger counter;
+    private volatile int counter;
 
     @Test
     public void evict() throws Exception {
@@ -88,8 +87,8 @@ public class SingleThreadedWhirlpoolTest {
         final int maxAllowedInt = 5;
         val intPool = Whirlpool.<Integer>builder()
                 .expirationTime(expirationTime)
-                .onCreate(counter::getAndIncrement)
-                .onClose(t -> counter.set(0))
+                .onCreate(() -> counter++)
+                .onClose(t -> counter = 0)
                 .onValidation(t -> t < maxAllowedInt)
                 .build();
         val list = new ArrayList<Integer>();
@@ -99,21 +98,21 @@ public class SingleThreadedWhirlpoolTest {
         }
         intPool.unhand(list.get(maxAllowedInt + 1));
         assertEquals(Integer.valueOf(0), intPool.borrow());
-}
+    }
 
-@Test
-public void expirationTime() throws Exception {
-    assertEquals(expirationTime, pool.getExpirationTime());
-}
+    @Test
+    public void expirationTime() throws Exception {
+        assertEquals(expirationTime, pool.getExpirationTime());
+    }
 
-@Before
-public void setUp() throws Exception {
-    counter = new AtomicInteger(0);
-    pool = Whirlpool.<Integer>builder()
-            .onCreate(counter::getAndIncrement)
-            .expirationTime(expirationTime)
-            .onClose(t -> counter.getAndDecrement())
-            .build();
+    @Before
+    public void setUp() throws Exception {
+        counter = 0;
+        pool = Whirlpool.<Integer>builder()
+                .onCreate(() -> counter++)
+                .expirationTime(expirationTime)
+                .onClose(t -> counter--)
+                .build();
+    }
 
-}
 }
