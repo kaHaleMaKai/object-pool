@@ -4,9 +4,7 @@ addons:
   apt:
     packages:
       - oracle-java8-installer
-os:
-  - linux
-  - osx
+os: linux
 script: ./gradlew clean build test javadoc jacocoTestReport
 jdk:
   - oraclejdk8
