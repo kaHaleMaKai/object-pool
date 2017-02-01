@@ -4,6 +4,7 @@ plugins {
     id 'maven'
     id 'idea'
     id "io.spring.dependency-management" version "1.0.0.RC2"
+    id 'jacoco'
 }
 
 version '0.1.0'
@@ -11,6 +12,8 @@ group = 'com.github.kahalemakai'
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
+
+def delombokedDir = "${rootProject.buildDir}/src-delomboked"
 
 repositories {
     jcenter()
@@ -24,16 +27,25 @@ dependencyManagement {
                 entry "log4j"
                 entry "apache-log4j-extras"
             }
+            dependency 'org.projectlombok:lombok:1.16.12'
         }
     }
 }
 
 dependencies {
-    compileOnly "org.projectlombok:lombok:1.16.12"
-    compile "log4j:log4j"
-    compile "log4j:apache-log4j-extras"
+    compileOnly 'org.projectlombok:lombok'
+    compile 'log4j:log4j'
+    compile 'log4j:apache-log4j-extras'
     testCompile group: 'junit', name: 'junit', version: '4.12'
-    testCompile "org.projectlombok:lombok:1.16.12"
+    testCompile 'org.projectlombok:lombok'
+}
+
+configurations {
+    lombok
+    lombok.extendsFrom(configurations.compile)
+    dependencies {
+        compile 'org.projectlombok:lombok'
+    }
 }
 
 configurations.compile.transitive = true
@@ -44,6 +56,40 @@ gradle.projectsEvaluated {
                 "-Xlint:unchecked" <<
                 "-Xlint:deprecation" <<
                 "-Xdiags:verbose"
+    }
+}
+
+task delombok {
+    doLast {
+        description 'Delomboks the source code'
+        ant.taskdef(classname: 'lombok.delombok.ant.Tasks$Delombok', classpath: configurations.lombok.asPath, name: 'delombok')
+        ant.mkdir(dir: delombokedDir)
+        ant.delombok(verbose: 'true', encoding: 'UTF-8', to: delombokedDir, from: 'src/main/java')
+    }
+}
+
+task javadoc(type: Javadoc, group: "documentation", overwrite: true) {
+    dependsOn delombok
+    source delombokedDir
+}
+
+task javadocJar(type: Jar) {
+    dependsOn javadoc
+    classifier = 'javadoc'
+    from javadoc
+}
+
+task sourcesJar(type: Jar) {
+    dependsOn classes
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+jacocoTestReport {
+  dependsOn delombok
+    additionalSourceDirs = files(delombokedDir)
+    reports {
+      xml.enabled true
     }
 }
 
