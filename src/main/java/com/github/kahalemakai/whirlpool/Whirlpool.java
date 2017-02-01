@@ -443,19 +443,23 @@ public class Whirlpool<T> implements Poolable<T> {
     }
 
     private T borrowHelper() {
-        T element;
+        T element = null;
         if (availableElements > 0) {
             element = orderedExpiringObjects.pollFirst();
             expiring.remove(element);
             if (!validate(element)) {
-                val msg = String.format(
-                        "cannot validate borrowed element %s. creating a new one instead",
-                        element);
-                log.info(msg);
+                if (log.isDebugEnabled()) {
+                    val msg = String.format(
+                            "cannot validate borrowed element %s. creating a new one instead",
+                            element);
+                    log.debug(msg);
+                }
+                this.close(element);
+                element = null;
             }
-            
             availableElements--;
-        } else {
+        }
+        if (element == null) {
             element = createElement();
             elementsCreated++;
         }

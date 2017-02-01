@@ -84,18 +84,36 @@ public class SingleThreadedWhirlpoolTest {
     }
 
     @Test
-    public void expirationTime() throws Exception {
-        assertEquals(expirationTime, pool.getExpirationTime());
-    }
-
-    @Before
-    public void setUp() throws Exception {
-        counter = new AtomicInteger(0);
-        pool = Whirlpool.<Integer>builder()
-                .onCreate(counter::getAndIncrement)
+    public void validation() throws Exception {
+        final int maxAllowedInt = 5;
+        val intPool = Whirlpool.<Integer>builder()
                 .expirationTime(expirationTime)
-                .onClose(t -> counter.getAndDecrement())
+                .onCreate(counter::getAndIncrement)
+                .onClose(t -> counter.set(0))
+                .onValidation(t -> t < maxAllowedInt)
                 .build();
+        val list = new ArrayList<Integer>();
+        for (int i = 0; i <= maxAllowedInt + 1; ++i) {
+            list.add(intPool.borrow());
+            assertEquals(Integer.valueOf(i), list.get(i));
+        }
+        intPool.unhand(list.get(maxAllowedInt + 1));
+        assertEquals(Integer.valueOf(0), intPool.borrow());
+}
 
-    }
+@Test
+public void expirationTime() throws Exception {
+    assertEquals(expirationTime, pool.getExpirationTime());
+}
+
+@Before
+public void setUp() throws Exception {
+    counter = new AtomicInteger(0);
+    pool = Whirlpool.<Integer>builder()
+            .onCreate(counter::getAndIncrement)
+            .expirationTime(expirationTime)
+            .onClose(t -> counter.getAndDecrement())
+            .build();
+
+}
 }
