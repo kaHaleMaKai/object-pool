@@ -246,6 +246,8 @@ public interface Poolable<T> {
      * This method should only be implemented if releasing an
      * external resource is required on removing an object from
      * the pool.
+     * @param element
+     *     the object to close
      * @throws PoolException
      *    if closing the element fails
      */

@@ -21,6 +21,7 @@ import java.util.function.Supplier;
  * expired elements in the object pool may be set up
  * by calling {@link #scheduleForEviction()}.
  * @param <T>
+ *     type of objects in the pool
  */
 @Log4j
 public class ObjectPool<T> implements Poolable<T> {
