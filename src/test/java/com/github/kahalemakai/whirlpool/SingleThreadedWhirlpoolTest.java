@@ -91,9 +91,11 @@ public class SingleThreadedWhirlpoolTest {
     @Before
     public void setUp() throws Exception {
         counter = new AtomicInteger(0);
-        pool = new Whirlpool<>(
-                expirationTime,
-                counter::getAndIncrement,
-                (t) -> counter.getAndDecrement());
+        pool = Whirlpool.<Integer>builder()
+                .onCreate(counter::getAndIncrement)
+                .expirationTime(expirationTime)
+                .onClose(t -> counter.getAndDecrement())
+                .build();
+
     }
 }

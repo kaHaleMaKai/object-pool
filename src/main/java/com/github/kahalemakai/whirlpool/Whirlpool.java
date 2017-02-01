@@ -1,10 +1,7 @@
 package com.github.kahalemakai.whirlpool;
 
-import lombok.Getter;
-import lombok.NonNull;
-import lombok.RequiredArgsConstructor;
+import lombok.*;
 import lombok.extern.log4j.Log4j;
-import lombok.val;
 
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -12,6 +9,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -55,6 +53,11 @@ public class Whirlpool<T> implements Poolable<T> {
         };
     }
 
+    private static final Predicate<?> DEFAULT_VALIDATION_FN;
+    static {
+        DEFAULT_VALIDATION_FN = (t) -> true;
+    }
+
     private static final Consumer<?> DEFAULT_CLOSE_FN;
     static {
         DEFAULT_CLOSE_FN = (t) -> { };
@@ -76,24 +79,62 @@ public class Whirlpool<T> implements Poolable<T> {
     private final Lock $lock;
 
     private final Supplier<T> createFn;
+    private final Predicate<T> validationFn;
     private final Consumer<T> closeFn;
 
+    @Builder
     public Whirlpool(final long expirationTime,
-                     final @NonNull Supplier<T> createFn,
-                     final @NonNull Consumer<T> closeFn) {
+                     final Supplier<T> onCreate,
+                     final Predicate<T> onValidation,
+                     final Consumer<T> onClose) {
         this.expirationTime = expirationTime;
         this.inUse = new HashSet<>();
         this.expiring = new HashMap<>();
         this.$lock = new ReentrantLock();
         this.orderedExpiringObjects = new LinkedList<>();
-        this.createFn = createFn;
-        this.closeFn = closeFn;
+        if (onCreate == null) {
+            @SuppressWarnings("unchecked")
+            final Supplier<T> createFn = (Supplier<T>) DEFAULT_CREATE_FN;
+            this.createFn = createFn;
+        }
+        else {
+            this.createFn = onCreate;
+        }
+        if (onClose == null) {
+            @SuppressWarnings("unchecked")
+            final Consumer<T> closeFn = (Consumer<T>) DEFAULT_CLOSE_FN;
+            this.closeFn = closeFn;
+        }
+        else {
+            this.closeFn = onClose;
+        }
+        if (onValidation == null) {
+            @SuppressWarnings("unchecked")
+            final Predicate<T> validationFn = (Predicate<T>) DEFAULT_VALIDATION_FN;
+            this.validationFn = validationFn;
+        }
+        else {
+            this.validationFn = onValidation;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public Whirlpool(final long expirationTime,
+                     final Supplier<T> createFn,
+                     final Predicate<T> validationFn) {
+        this(expirationTime,
+                createFn,
+                validationFn,
+                (Consumer<T>) DEFAULT_CLOSE_FN);
     }
 
     @SuppressWarnings("unchecked")
     public Whirlpool(final long expirationTime,
                      final Supplier<T> createFn) {
-        this(expirationTime, createFn, (Consumer<T>) DEFAULT_CLOSE_FN);
+        this(expirationTime,
+                createFn,
+                (Predicate<T>) DEFAULT_VALIDATION_FN,
+                (Consumer<T>) DEFAULT_CLOSE_FN);
     }
 
     @SuppressWarnings("unchecked")
@@ -110,7 +151,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public boolean validate(T element) {
-        return true;
+        return validationFn.test(element);
     }
 
     /**
