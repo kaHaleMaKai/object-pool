@@ -24,7 +24,7 @@ import java.util.function.Supplier;
  *     type of objects in the pool
  */
 @Log4j
-public class ObjectPool<T> implements Poolable<T> {
+public class Whirlpool<T> implements Poolable<T> {
 
     private static final long SECOND = 1000;
     private static final long MINUTE = 60 * SECOND;
@@ -34,9 +34,9 @@ public class ObjectPool<T> implements Poolable<T> {
     private static final long EVICTION_DELAY = 5 * MINUTE;
     private static final long EVICTION_TIMEOUT = 100;
 
-    private static final Set<ObjectPool<?>> poolTracker;
+    private static final Set<Whirlpool<?>> poolTracker;
     static {
-        val map = new WeakHashMap<ObjectPool<?>, Boolean>();
+        val map = new WeakHashMap<Whirlpool<?>, Boolean>();
         val syncedMap = Collections.synchronizedMap(map);
         poolTracker = Collections.newSetFromMap(syncedMap);
     }
@@ -78,9 +78,9 @@ public class ObjectPool<T> implements Poolable<T> {
     private final Supplier<T> createFn;
     private final Consumer<T> closeFn;
 
-    public ObjectPool(final long expirationTime,
-                      final @NonNull Supplier<T> createFn,
-                      final @NonNull Consumer<T> closeFn) {
+    public Whirlpool(final long expirationTime,
+                     final @NonNull Supplier<T> createFn,
+                     final @NonNull Consumer<T> closeFn) {
         this.expirationTime = expirationTime;
         this.inUse = new HashSet<>();
         this.expiring = new HashMap<>();
@@ -91,17 +91,17 @@ public class ObjectPool<T> implements Poolable<T> {
     }
 
     @SuppressWarnings("unchecked")
-    public ObjectPool(final long expirationTime,
-                      final Supplier<T> createFn) {
+    public Whirlpool(final long expirationTime,
+                     final Supplier<T> createFn) {
         this(expirationTime, createFn, (Consumer<T>) DEFAULT_CLOSE_FN);
     }
 
     @SuppressWarnings("unchecked")
-    public ObjectPool(final long expirationTime) {
+    public Whirlpool(final long expirationTime) {
         this(expirationTime, (Supplier<T>) DEFAULT_CREATE_FN);
     }
 
-    public ObjectPool() {
+    public Whirlpool() {
         this(DEFAULT_EXPIRATION_TIME);
     }
 
@@ -323,17 +323,17 @@ public class ObjectPool<T> implements Poolable<T> {
      * Run eviction on this object pool periodically in the background.
      * <p>
      * A background thread is created and associated with
-     * the {@link ObjectPool} class object.
+     * the {@link Whirlpool} class object.
      */
     public void scheduleForEviction() {
-        ObjectPool.poolTracker.add(this);
+        Whirlpool.poolTracker.add(this);
     }
 
     /**
      * Don't run eviction on this object pool peridically in the background.
      */
     public void removeFromEvictionSchedule() {
-        ObjectPool.poolTracker.remove(this);
+        Whirlpool.poolTracker.remove(this);
     }
 
     private void evictHelper() {
@@ -431,7 +431,7 @@ public class ObjectPool<T> implements Poolable<T> {
 
     @RequiredArgsConstructor(staticName = "init")
     private static class EvictionTask extends TimerTask {
-        final Queue<ObjectPool<?>> queue = new LinkedBlockingQueue<>();
+        final Queue<Whirlpool<?>> queue = new LinkedBlockingQueue<>();
 
         @Override
         public void run() {

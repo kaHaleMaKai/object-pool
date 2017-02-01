@@ -9,8 +9,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 
-public class SingleThreadedObjectPoolTest {
-    private ObjectPool<Integer> pool;
+public class SingleThreadedWhirlpoolTest {
+    private Whirlpool<Integer> pool;
     private final long expirationTime = 1000;
     private AtomicInteger counter;
 
@@ -91,7 +91,7 @@ public class SingleThreadedObjectPoolTest {
     @Before
     public void setUp() throws Exception {
         counter = new AtomicInteger(0);
-        pool = new ObjectPool<>(
+        pool = new Whirlpool<>(
                 expirationTime,
                 counter::getAndIncrement,
                 (t) -> counter.getAndDecrement());
