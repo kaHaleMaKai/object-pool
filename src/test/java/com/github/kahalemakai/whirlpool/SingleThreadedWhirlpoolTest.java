@@ -14,6 +14,53 @@ public class SingleThreadedWhirlpoolTest {
     private volatile int counter;
 
     @Test
+    public void autoClosing() throws Exception {
+        try (val autoClosing = pool.borrowKindly()) {
+            autoClosing.get();
+            assertEquals(1, pool.totalSize());
+        }
+        assertEquals(1, pool.availableElements());
+        Thread.sleep(expirationTime);
+        pool.evictAll();
+        assertEquals(0, pool.availableElements());
+    }
+
+    @Test(expected = InterruptedException.class)
+    public void interruptedOnBorrow() throws Exception {
+        try {
+            val otherPool = Whirlpool.<Integer>builder()
+                    .onCreate(() -> {
+                        try {
+                            System.out.println("sleeping on thread " + Thread.currentThread().getName());
+                            Thread.sleep(10000);
+                        } catch (InterruptedException e) {
+                            Thread.interrupted();
+                        }
+                        return counter++;
+                    })
+                    .expirationTime(expirationTime)
+                    .onClose(t -> counter--)
+                    .build();
+            val thread = new Thread(otherPool::borrow);
+            thread.setName("sub 1");
+            thread.start();
+            thread.run();
+            val t2 = new Thread(() -> {
+                try {
+                    otherPool.borrow(1);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            t2.setName("sub 2");
+            t2.start();
+            t2.run();
+        } catch (RuntimeException e) {
+            throw (Exception) e.getCause();
+        }
+    }
+
+    @Test
     public void evict() throws Exception {
         val borrowed = pool.borrow();
         assertEquals(Integer.valueOf(1), Integer.valueOf(pool.totalSize()));

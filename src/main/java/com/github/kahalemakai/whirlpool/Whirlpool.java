@@ -215,12 +215,40 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public T borrow(long millis) throws InterruptedException {
-        $lock.tryLock(millis, TimeUnit.MILLISECONDS);
+        if ($lock.tryLock(millis, TimeUnit.MILLISECONDS)) {
+            try {
+                return borrowHelper();
+            } finally {
+                $lock.unlock();
+            }
+        }
+        val msg = String.format("timed out while borrowing on thread %s",
+                Thread.currentThread().getName());
+        throw new InterruptedException(msg);
+    }
+
+    public AutoClosing<T> borrowKindly() {
+        $lock.lock();
         try {
-            return borrowHelper();
+            val element = borrowHelper();
+            return AutoClosing.of(element, this);
         } finally {
             $lock.unlock();
         }
+    }
+
+    public AutoClosing<T> borrowKindly(long millis) throws InterruptedException {
+        if ($lock.tryLock(millis, TimeUnit.MILLISECONDS)) {
+            try {
+                val element = borrowHelper();
+                return AutoClosing.of(element, this);
+            } finally {
+                $lock.unlock();
+            }
+        }
+        val msg = String.format("timed out while borrowing kindly on thread %s",
+                Thread.currentThread().getName());
+        throw new InterruptedException(msg);
     }
 
     /**
@@ -241,12 +269,17 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public void unhand(T element, long millis) throws InterruptedException {
-        $lock.tryLock(millis, TimeUnit.MILLISECONDS);
-        try {
-            unhandHelper(element);
-        } finally {
-            $lock.unlock();
+        if ($lock.tryLock(millis, TimeUnit.MILLISECONDS)) {
+            try {
+                unhandHelper(element);
+                return;
+            } finally {
+                $lock.unlock();
+            }
         }
+        val msg = String.format("timed out while unhanding object on thread %s",
+                Thread.currentThread().getName());
+        throw new InterruptedException(msg);
     }
 
     /**
@@ -315,12 +348,17 @@ public class Whirlpool<T> implements Poolable<T> {
         if (!evictionPossible()) {
             return;
         }
-        $lock.tryLock(millis, TimeUnit.MILLISECONDS);
-        try {
-            evictHelper();
-        } finally {
-            $lock.unlock();
+        if ($lock.tryLock(millis, TimeUnit.MILLISECONDS)) {
+            try {
+                evictHelper();
+                return;
+            } finally {
+                $lock.unlock();
+            }
         }
+        val msg = String.format("timed out while evicting all expired objects on thread %s",
+                Thread.currentThread().getName());
+        throw new InterruptedException(msg);
     }
 
     /**
@@ -347,12 +385,17 @@ public class Whirlpool<T> implements Poolable<T> {
         if (availableElementsEstimate() == 0) {
             return;
         }
-        $lock.tryLock(millis, TimeUnit.MILLISECONDS);
-        try {
-            evictHelper(element);
-        } finally {
-            $lock.unlock();
+        if ($lock.tryLock(millis, TimeUnit.MILLISECONDS)) {
+            try {
+                evictHelper(element);
+                return;
+            } finally {
+                $lock.unlock();
+            }
         }
+        val msg = String.format("timed out while evicting an object on thread %s",
+                Thread.currentThread().getName());
+        throw new InterruptedException(msg);
     }
 
     /**
@@ -379,12 +422,17 @@ public class Whirlpool<T> implements Poolable<T> {
         if (availableElementsEstimate() == 0) {
             return;
         }
-        $lock.tryLock(millis, TimeUnit.MILLISECONDS);
-        try {
-            removeNowHelper(element);
-        } finally {
-            $lock.unlock();
+        if ($lock.tryLock(millis, TimeUnit.MILLISECONDS)) {
+            try {
+                removeNowHelper(element);
+                return;
+            } finally {
+                $lock.unlock();
+            }
         }
+        val msg = String.format("timed out while removing an object on thread %s",
+                Thread.currentThread().getName());
+        throw new InterruptedException(msg);
     }
 
     /**
