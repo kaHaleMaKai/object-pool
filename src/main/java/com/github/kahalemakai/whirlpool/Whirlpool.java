@@ -228,27 +228,11 @@ public class Whirlpool<T> implements Poolable<T> {
     }
 
     public AutoClosing<T> borrowKindly() {
-        $lock.lock();
-        try {
-            val element = borrowHelper();
-            return AutoClosing.of(element, this);
-        } finally {
-            $lock.unlock();
-        }
+        return AutoClosing.of(borrow(), this);
     }
 
     public AutoClosing<T> borrowKindly(long millis) throws InterruptedException {
-        if ($lock.tryLock(millis, TimeUnit.MILLISECONDS)) {
-            try {
-                val element = borrowHelper();
-                return AutoClosing.of(element, this);
-            } finally {
-                $lock.unlock();
-            }
-        }
-        val msg = String.format("timed out while borrowing kindly on thread %s",
-                Thread.currentThread().getName());
-        throw new InterruptedException(msg);
+        return AutoClosing.of(borrow(millis), this);
     }
 
     /**
