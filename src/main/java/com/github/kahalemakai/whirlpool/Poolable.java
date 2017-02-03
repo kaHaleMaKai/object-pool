@@ -13,10 +13,10 @@ package com.github.kahalemakai.whirlpool;
  * The number of currently available elements (i.e. that can be borrowed
  * from the pool) can be retrieved via {@link #availableElements()},
  * and the total number of borrowed + available elements by calling
- * {@link #elementsCreated()}. Those methods should deliver accurate
+ * {@link #totalSize()}. Those methods should deliver accurate
  * numbers, which makes them blocking. If only an estimate is required,
  * it can be obtained by {@link #availableElementsEstimate()}, and
- * {@link #elementsCreatedEstimate()} respectively.
+ * {@link #totalSizeEstimate()} respectively.
  *
  * @param <T>
  *     type of elements in the pool
@@ -79,7 +79,7 @@ public interface Poolable<T> {
      * <p>
      * This method should block.
      * @throws PoolException
-     *     if a {@link #close(Object)} method needs to be
+     *     if a {@link #closeElement(Object)} method needs to be
      *     called, and fails
      */
     void evictAll();
@@ -94,7 +94,7 @@ public interface Poolable<T> {
      * @throws InterruptedException
      *     if timed out
      * @throws PoolException
-     *     if a {@link #close(Object)} method needs to be
+     *     if a {@link #closeElement(Object)} method needs to be
      *     called, and fails
      */
     void evictAll(long millis) throws InterruptedException;
@@ -109,7 +109,7 @@ public interface Poolable<T> {
      * @param element
      *     the object to evict from the pool
      * @throws PoolException
-     *     if a {@link #close(Object)} method needs to be
+     *     if a {@link #closeElement(Object)} method needs to be
      *     called, and fails
      */
     void evict(T element);
@@ -128,7 +128,7 @@ public interface Poolable<T> {
      * @throws InterruptedException
      *     if timed out
      * @throws PoolException
-     *     if a {@link #close(Object)} method needs to be
+     *     if a {@link #closeElement(Object)} method needs to be
      *     called, and fails
      */
     void evict(T element, long millis) throws InterruptedException;
@@ -142,7 +142,7 @@ public interface Poolable<T> {
      * @param element
      *     the element to remove
      * @throws PoolException
-     *     if the associated {@link #close(Object)} method needs to be
+     *     if the associated {@link #closeElement(Object)} method needs to be
      *     called, and fails
      */
     void removeNow(T element);
@@ -160,7 +160,7 @@ public interface Poolable<T> {
      * @throws InterruptedException
      *     if timed out
      * @throws PoolException
-     *     if the associated {@link #close(Object)} method needs to be
+     *     if the associated {@link #closeElement(Object)} method needs to be
      *     called, and fails
      */
     void removeNow(T element, long millis) throws InterruptedException;
@@ -196,12 +196,12 @@ public interface Poolable<T> {
      * <p>
      * This method should block. If only an estimate is
      * required, use the non-blocking method
-     * {@link #elementsCreatedEstimate()} ()}.
+     * {@link #totalSizeEstimate()} ()}.
      * @return
      *     the total number of currently existing
      *     elements
      */
-    int elementsCreated();
+    int totalSize();
     /**
      * Get an estimate on the number of currently
      * existing objects associated with the pool
@@ -213,7 +213,7 @@ public interface Poolable<T> {
      *     the total number of currently existing
      *     elements
      */
-    int elementsCreatedEstimate();
+    int totalSizeEstimate();
 
     /**
      * Validate objects to be borrowed from the pool.
@@ -251,7 +251,36 @@ public interface Poolable<T> {
      * @throws PoolException
      *    if closing the element fails
      */
-    default void close(T element) { }
+    default void closeElement(T element) { }
+
+    /**
+     * Prepare an object's state so that it may be borrowed.
+     * <p>
+     * This method is <b>only</b> on borrowing an existing
+     * object from the pool <b>after</b> successful validation.
+     * It is <b>never</b> called on newly created objects.
+     * <p>
+     * Usually, it should suffice to either implement
+     * this method or {@link #resetElement(Object)}.
+     *
+     * @param element
+     *     the object to prepare
+     */
+    default void prepareElement(T element) { }
+
+    /**
+     * Reset the object's state on returning it to the pool.
+     * <p>
+     * This method is called on the object prior to adding
+     * it to the pool's underlying {@code Collection}.
+     * <p>
+     * Usually, it should suffice to either implement
+     * this method or {@link #prepareElement(Object)}:
+     *
+     * @param element
+     *     the object to reset
+     */
+    default void resetElement(T element) { }
 
     /**
      * Get the time after which available (not borrowed)
@@ -260,4 +289,5 @@ public interface Poolable<T> {
      *     time after which objects expire
      */
     long getExpirationTime();
+
 }

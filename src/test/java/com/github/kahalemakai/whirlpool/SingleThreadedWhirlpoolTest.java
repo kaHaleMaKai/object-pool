@@ -16,44 +16,44 @@ public class SingleThreadedWhirlpoolTest {
     @Test
     public void evict() throws Exception {
         val borrowed = pool.borrow();
-        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.totalSize()));
         Thread.sleep(expirationTime);
         pool.evict(borrowed);
-        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.totalSize()));
         pool.unhand(borrowed);
         pool.evict(borrowed);
-        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.totalSize()));
         Thread.sleep(expirationTime);
         pool.evict(borrowed);
-        assertEquals(Integer.valueOf(0), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(Integer.valueOf(0), Integer.valueOf(pool.totalSize()));
         assertEquals(borrowed, pool.borrow());
     }
 
     @Test
     public void remove() throws Exception {
         val borrowed = pool.borrow();
-        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.totalSize()));
         pool.removeNow(borrowed);
-        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.totalSize()));
         pool.unhand(borrowed);
         pool.removeNow(borrowed);
-        assertEquals(Integer.valueOf(0), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(Integer.valueOf(0), Integer.valueOf(pool.totalSize()));
         assertEquals(borrowed, pool.borrow());
     }
 
     @Test
     public void evictAll() throws Exception {
         val borrowed = pool.borrow();
-        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.totalSize()));
         Thread.sleep(expirationTime);
         pool.evictAll();
-        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.totalSize()));
         pool.unhand(borrowed);
         pool.evictAll();
-        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(Integer.valueOf(1), Integer.valueOf(pool.totalSize()));
         Thread.sleep(expirationTime);
         pool.evictAll();
-        assertEquals(Integer.valueOf(0), Integer.valueOf(pool.elementsCreated()));
+        assertEquals(Integer.valueOf(0), Integer.valueOf(pool.totalSize()));
         assertEquals(borrowed, pool.borrow());
     }
 
@@ -65,8 +65,8 @@ public class SingleThreadedWhirlpoolTest {
         list.add(pool.borrow());
         list.add(pool.borrow());
         pool.unhand(list.get(3));
-        assertEquals(Integer.valueOf(4), Integer.valueOf(pool.elementsCreated()));
-        assertEquals(Integer.valueOf(4), Integer.valueOf(pool.elementsCreatedEstimate()));
+        assertEquals(Integer.valueOf(4), Integer.valueOf(pool.totalSize()));
+        assertEquals(Integer.valueOf(4), Integer.valueOf(pool.totalSizeEstimate()));
         assertEquals(Integer.valueOf(1), Integer.valueOf(pool.availableElements()));
         assertEquals(Integer.valueOf(1), Integer.valueOf(pool.availableElementsEstimate()));
     }
