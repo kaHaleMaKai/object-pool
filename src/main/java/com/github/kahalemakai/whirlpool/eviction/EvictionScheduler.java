@@ -12,7 +12,7 @@ public class EvictionScheduler {
 
     private Timer timer;
     private final Object[] $lock = new Object[0];
-    private final AtomicInteger counter = new AtomicInteger(0);
+    private final AtomicInteger usageCount = new AtomicInteger(0);
     private final Map<Poolable<?>, TimerTask> tracker;
 
     private EvictionScheduler() {
@@ -25,7 +25,7 @@ public class EvictionScheduler {
     }
 
     public boolean isActive() {
-        return counter.get() == 0;
+        return usageCount.get() == 0;
     }
 
     public void addPoolToSchedule(final Poolable<?> pool) {
@@ -42,7 +42,7 @@ public class EvictionScheduler {
             expTime = (long) (0.95 * pool.getExpirationTime());
             timer.scheduleAtFixedRate(task, expTime, expTime);
             tracker.put(pool, task);
-            counter.getAndIncrement();
+            usageCount.getAndIncrement();
         }
         if (log.isDebugEnabled()) {
             val msg = String.format("scheduled %s for eviction every %d ms (with delay %d ms",
@@ -53,7 +53,7 @@ public class EvictionScheduler {
 
     public void removePoolFromSchedule(final Poolable<?> pool) {
         synchronized ($lock) {
-            if (counter.get() == 0) {
+            if (usageCount.get() == 0) {
                 return;
             }
             val task = tracker.remove(pool);
@@ -61,7 +61,7 @@ public class EvictionScheduler {
                 return;
             }
             task.cancel();
-            if (counter.decrementAndGet() == 0) {
+            if (usageCount.decrementAndGet() == 0) {
                 timer.cancel();
                 timer = null;
             }
