@@ -1,11 +1,13 @@
 package com.github.kahalemakai.whirlpool;
 
+import com.github.kahalemakai.whirlpool.eviction.AutoClosing;
+import com.github.kahalemakai.whirlpool.eviction.EvictionScheduler;
 import lombok.*;
 import lombok.extern.log4j.Log4j;
 
-import java.lang.ref.WeakReference;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -25,22 +27,12 @@ import java.util.function.Supplier;
 public class Whirlpool<T> implements Poolable<T> {
 
     private static final long SECOND = 1000;
-    private static final long MINUTE = 60 * SECOND;
 
     public static final long DEFAULT_EXPIRATION_TIME = 30 * SECOND;
-    private static final long EVICTION_INTERVAL = MINUTE;
-    private static final long EVICTION_DELAY = 5 * MINUTE;
-    private static final long EVICTION_TIMEOUT = 100;
 
-    private static final Map<Poolable<?>, TimerTask> poolTracker;
+    private static final EvictionScheduler EVICTION_SCHEDULER;
     static {
-        val map = new WeakHashMap<Poolable<?>, TimerTask>();
-        poolTracker = Collections.synchronizedMap(map);
-    }
-
-    private static final Timer evictionTimer;
-    static {
-        evictionTimer = new Timer("eviction-timer");
+        EVICTION_SCHEDULER = EvictionScheduler.init();
     }
 
     private static final Supplier<?> DEFAULT_CREATE_FN;
@@ -60,8 +52,8 @@ public class Whirlpool<T> implements Poolable<T> {
         NO_OP_CONSUMER = (t) -> { };
     }
 
-    private volatile int availableElements;
-    private volatile int totalSize;
+    private final AtomicInteger availableElements = new AtomicInteger(0);
+    private final AtomicInteger totalSize = new AtomicInteger(0);
 
     /**
      * @return {@inheritDoc}
@@ -80,8 +72,6 @@ public class Whirlpool<T> implements Poolable<T> {
     private final Consumer<T> closeFn;
     private final Consumer<T> prepareFn;
     private final Consumer<T> resetFn;
-
-    private TimerTask evictionTask = null;
 
     @Builder
     public Whirlpool(final long expirationTime,
@@ -273,7 +263,7 @@ public class Whirlpool<T> implements Poolable<T> {
     public int availableElements() {
         $lock.lock();
         try {
-            return availableElements;
+            return availableElements.get();
         } finally {
             $lock.unlock();
         }
@@ -284,7 +274,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public int availableElementsEstimate() {
-        return availableElements;
+        return availableElements.get();
     }
 
     /**
@@ -294,7 +284,7 @@ public class Whirlpool<T> implements Poolable<T> {
     public int totalSize() {
         $lock.lock();
         try {
-            return totalSize;
+            return totalSize.get();
         } finally {
             $lock.unlock();
         }
@@ -305,7 +295,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public int totalSizeEstimate() {
-        return totalSize;
+        return totalSize.get();
     }
 
     /**
@@ -352,7 +342,7 @@ public class Whirlpool<T> implements Poolable<T> {
     public void evict(T element) {
         $lock.lock();
         try {
-            if (availableElements == 0) {
+            if (availableElements.get() == 0) {
                 return;
             }
             evictHelper(element);
@@ -446,7 +436,7 @@ public class Whirlpool<T> implements Poolable<T> {
      * calling {@link #removeFromEvictionSchedule()}.
      */
     public void scheduleForEviction() {
-        Whirlpool.addPoolToSchedule(this);
+        Whirlpool.EVICTION_SCHEDULER.addPoolToSchedule(this);
     }
 
     /**
@@ -454,7 +444,7 @@ public class Whirlpool<T> implements Poolable<T> {
      * it has been registered before.
      */
     public void removeFromEvictionSchedule() {
-        Whirlpool.removePoolFromSchedule(this);
+        Whirlpool.EVICTION_SCHEDULER.removePoolFromSchedule(this);
     }
 
     /* ******************************************************
@@ -477,11 +467,11 @@ public class Whirlpool<T> implements Poolable<T> {
                 break;
             }
         }
-        availableElements -= numEvicted;
-        totalSize -= numEvicted;
+        availableElements.addAndGet(-numEvicted);
+        totalSize.addAndGet(-numEvicted);
         if (log.isDebugEnabled()) {
             val msg = String.format("evicted %d element(s), idle element(s): %d, total number: %d",
-                   numEvicted, availableElements, totalSize);
+                   numEvicted, availableElements.get(), totalSize.get());
             log.debug(msg);
         }
     }
@@ -510,8 +500,8 @@ public class Whirlpool<T> implements Poolable<T> {
             if (exp.equals(element)) {
                 orderedExpiringObjects.remove(i);
                 expiring.remove(element);
-                availableElements--;
-                totalSize--;
+                availableElements.getAndDecrement();
+                totalSize.getAndDecrement();
                 this.closeElement(element);
                 break;
             }
@@ -533,7 +523,7 @@ public class Whirlpool<T> implements Poolable<T> {
 
     private T borrowHelper() {
         T element = null;
-        if (availableElements > 0) {
+        if (availableElements.get() > 0) {
             element = orderedExpiringObjects.pollFirst();
             expiring.remove(element);
             if (!validate(element)) {
@@ -546,11 +536,11 @@ public class Whirlpool<T> implements Poolable<T> {
                 this.closeElement(element);
                 element = null;
             }
-            availableElements--;
+            availableElements.getAndDecrement();
         }
         if (element == null) {
             element = createElement();
-            totalSize++;
+            totalSize.getAndIncrement();
         }
         else {
             this.prepareElement(element);
@@ -564,110 +554,12 @@ public class Whirlpool<T> implements Poolable<T> {
         this.resetElement(element);
         expiring.put(element, System.currentTimeMillis());
         orderedExpiringObjects.addLast(element);
-        availableElements++;
+        availableElements.getAndIncrement();
     }
 
     /* ******************************************************
      *                     static method                    *
      * *****************************************************/
 
-    private static void addPoolToSchedule(final Poolable<?> pool) {
-        long expTime;
-        synchronized (poolTracker) {
-            if (poolTracker.containsKey(pool) && poolTracker.get(pool) != null) {
-                return;
-            }
-            val task = EvictionTask.of(pool);
-            // run slightly more often than necessary
-            expTime = (long) (0.95 * pool.getExpirationTime());
-            evictionTimer.scheduleAtFixedRate(task, expTime, expTime);
-            poolTracker.put(pool, task);
-        }
-        if (log.isDebugEnabled()) {
-            val msg = String.format("scheduled %s for eviction every %d ms (with delay %d ms",
-                    pool, expTime, expTime);
-            log.debug(msg);
-        }
-    }
-
-    private static void removePoolFromSchedule(final Poolable<?> pool) {
-        synchronized (poolTracker) {
-            val task = poolTracker.remove(pool);
-            if (task == null) {
-                return;
-            }
-            task.cancel();
-        }
-        if (log.isDebugEnabled()) {
-            val msg = String.format("removed %s from background eviction", pool);
-            log.debug(msg);
-        }
-    }
-
-    private static class EvictionTask extends TimerTask {
-
-        private final WeakReference<? extends Poolable<?>> poolRef;
-
-        Poolable<?> getPool() {
-            return poolRef.get();
-        }
-
-        private EvictionTask(final Poolable<?> pool) {
-            this.poolRef = new WeakReference<Poolable<?>>(pool);
-        }
-
-        @Override
-        public void run() {
-            Poolable<?> pool = poolRef.get();
-            if (pool == null) {
-                this.cancel();
-                return;
-            }
-            if (pool.availableElementsEstimate() > 0) {
-                try {
-                    pool.evictAll(EVICTION_TIMEOUT);
-                } catch (InterruptedException e) {
-                    log.warn("background eviction task timed out");
-                    Thread.interrupted();
-                }
-            }
-        }
-
-        /**
-         * {@inheritDoc}
-         * <p>
-         * {@code EvictionTask}s {@code hashCode} method
-         * method delegates to the weakly-referenced
-         * pool object.
-         */
-        @Override
-        public int hashCode() {
-            return Objects.hashCode(poolRef.get());
-        }
-
-        /**
-         * {@inheritDoc}
-         * <p>
-         * {@code EvictionTask}s are compared by object identify
-         * of the weakly-referenced pool object.
-         *
-         */
-        @Override
-        public boolean equals(Object obj) {
-            if (this == obj) {
-                return true;
-            }
-            if (obj == null || !(obj instanceof EvictionTask)) {
-                return false;
-            }
-            return poolRef.get() == ((EvictionTask) obj).getPool();
-        }
-
-
-        private static EvictionTask of(final Poolable<?> pool) {
-            return new EvictionTask(pool);
-        }
-
-    }
 
 }

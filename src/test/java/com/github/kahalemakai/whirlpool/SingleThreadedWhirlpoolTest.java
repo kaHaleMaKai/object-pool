@@ -10,7 +10,7 @@ import static org.junit.Assert.assertEquals;
 
 public class SingleThreadedWhirlpoolTest {
     private Whirlpool<Integer> pool;
-    private final long expirationTime = 1000;
+    private final long expirationTime = 100;
     private volatile int counter;
 
     @Test

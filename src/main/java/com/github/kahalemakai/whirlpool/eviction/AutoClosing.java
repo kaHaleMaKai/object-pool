@@ -1,5 +1,6 @@
-package com.github.kahalemakai.whirlpool;
+package com.github.kahalemakai.whirlpool.eviction;
 
+import com.github.kahalemakai.whirlpool.Poolable;
 import lombok.RequiredArgsConstructor;
 
 import java.io.Closeable;
