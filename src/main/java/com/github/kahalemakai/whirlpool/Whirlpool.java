@@ -195,6 +195,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public T borrow() {
+        throwIfClosed();
         $lock.lock();
         try {
             return borrowHelper();
@@ -208,6 +209,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public T borrow(long millis) throws InterruptedException {
+        throwIfClosed();
         if ($lock.tryLock(millis, TimeUnit.MILLISECONDS)) {
             try {
                 return borrowHelper();
@@ -233,6 +235,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public void unhand(T element) {
+        throwIfClosed();
         $lock.lock();
         try {
             unhandHelper(element);
@@ -246,6 +249,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public void unhand(T element, long millis) throws InterruptedException {
+        throwIfClosed();
         if ($lock.tryLock(millis, TimeUnit.MILLISECONDS)) {
             try {
                 unhandHelper(element);
@@ -306,6 +310,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public void evictAll() {
+        throwIfClosed();
         if (!evictionPossible()) {
             return;
         }
@@ -331,6 +336,7 @@ public class Whirlpool<T> implements Poolable<T> {
         } catch (Exception e) {
             throw new PoolException(e);
         } finally {
+            closed.set(true);
             $lock.unlock();
         }
     }
@@ -340,6 +346,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public void evictAll(long millis) throws InterruptedException {
+        throwIfClosed();
         if (!evictionPossible()) {
             return;
         }
@@ -361,6 +368,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public void evict(T element) {
+        throwIfClosed();
         $lock.lock();
         try {
             if (availableElements.get() == 0) {
@@ -377,6 +385,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public void evict(T element, long millis) throws InterruptedException {
+        throwIfClosed();
         if (availableElementsEstimate() == 0) {
             return;
         }
@@ -398,6 +407,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public void removeNow(T element) {
+        throwIfClosed();
         if (availableElementsEstimate() == 0) {
             return;
         }
@@ -414,6 +424,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     @Override
     public void removeNow(T element, long millis) throws InterruptedException {
+        throwIfClosed();
         if (availableElementsEstimate() == 0) {
             return;
         }
@@ -457,6 +468,7 @@ public class Whirlpool<T> implements Poolable<T> {
      * calling {@link #removeFromEvictionSchedule()}.
      */
     public void scheduleForEviction() {
+        throwIfClosed();
         Whirlpool.EVICTION_SCHEDULER.addPoolToSchedule(this);
     }
 
@@ -465,12 +477,19 @@ public class Whirlpool<T> implements Poolable<T> {
      * it has been registered before.
      */
     public void removeFromEvictionSchedule() {
+        throwIfClosed();
         Whirlpool.EVICTION_SCHEDULER.removePoolFromSchedule(this);
     }
 
     /* ******************************************************
      *                    public method                    *
      * *****************************************************/
+
+    private void throwIfClosed() {
+        if (closed.get()) {
+            throw PoolException.poolClosed();
+        }
+    }
 
     private void evictHelper() {
         evictOrRemove(false);
@@ -504,6 +523,9 @@ public class Whirlpool<T> implements Poolable<T> {
             else {
                 break;
             }
+        }
+        if (numEvicted == 0) {
+            return;
         }
         availableElements.addAndGet(-numEvicted);
         totalSize.addAndGet(-numEvicted);

@@ -152,6 +152,18 @@ public class SingleThreadedWhirlpoolTest {
         assertEquals(expirationTime, pool.getExpirationTime());
     }
 
+    @Test
+    public void closeIsIdempotent() throws Exception {
+        pool.close();
+        pool.close();
+    }
+
+    @Test(expected = PoolException.class)
+    public void closedInstanceThrows() throws Exception {
+        pool.close();
+        pool.borrow();
+    }
+
     @Before
     public void setUp() throws Exception {
         counter = 0;

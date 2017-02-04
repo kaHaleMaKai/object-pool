@@ -1,5 +1,7 @@
 package com.github.kahalemakai.whirlpool;
 
+import lombok.val;
+
 /**
  * The {@code PoolException} should be thrown
  * whenever an interaction with a {@link Poolable}
@@ -21,5 +23,10 @@ public class PoolException extends RuntimeException {
 
     public PoolException(Throwable cause) {
         super(cause);
+    }
+
+    public static PoolException poolClosed() {
+        val msg = "the pool instance has been closed";
+        return new PoolException(msg);
     }
 }
