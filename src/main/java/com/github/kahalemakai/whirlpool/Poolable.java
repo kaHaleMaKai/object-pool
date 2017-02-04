@@ -21,7 +21,7 @@ package com.github.kahalemakai.whirlpool;
  * @param <T>
  *     type of elements in the pool
  */
-public interface Poolable<T> {
+public interface Poolable<T> extends AutoCloseable {
 
     /**
      * Borrow an object from the pool in a blocking way.

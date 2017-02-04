@@ -7,6 +7,7 @@ import lombok.extern.log4j.Log4j;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -72,6 +73,8 @@ public class Whirlpool<T> implements Poolable<T> {
     private final Consumer<T> closeFn;
     private final Consumer<T> prepareFn;
     private final Consumer<T> resetFn;
+
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     @Builder
     public Whirlpool(final long expirationTime,
@@ -318,6 +321,24 @@ public class Whirlpool<T> implements Poolable<T> {
      * {@inheritDoc}
      */
     @Override
+    public void close() throws PoolException {
+        if (closed.get()) {
+            return;
+        }
+        $lock.lock();
+        try {
+            removeHelper();
+        } catch (Exception e) {
+            throw new PoolException(e);
+        } finally {
+            $lock.unlock();
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public void evictAll(long millis) throws InterruptedException {
         if (!evictionPossible()) {
             return;
@@ -452,12 +473,29 @@ public class Whirlpool<T> implements Poolable<T> {
      * *****************************************************/
 
     private void evictHelper() {
+        evictOrRemove(false);
+    }
+
+    private void removeHelper() {
+        evictOrRemove(true);
+    }
+
+    private void evictHelper(T element) {
+        evictOrRemoveNow(element, false);
+    }
+
+    private void removeNowHelper(T element) {
+        evictOrRemoveNow(element, true);
+    }
+
+    private void evictOrRemove(boolean instantly) {
         int numEvicted = 0;
-        val shiftedCurrentTimestamp = System.currentTimeMillis() - expirationTime;
+        val shiftedCurrentTimestamp = instantly
+                ? 0
+                : System.currentTimeMillis() - expirationTime;
         while (orderedExpiringObjects.size() > 0) {
             val head = orderedExpiringObjects.getFirst();
-            val timestamp = expiring.get(head);
-            if (timestamp <= shiftedCurrentTimestamp) {
+            if (instantly || expiring.get(head) <= shiftedCurrentTimestamp) {
                 expiring.remove(head);
                 orderedExpiringObjects.removeFirst();
                 this.closeElement(head);
@@ -471,18 +509,11 @@ public class Whirlpool<T> implements Poolable<T> {
         totalSize.addAndGet(-numEvicted);
         if (log.isDebugEnabled()) {
             val msg = String.format("evicted %d element(s), idle element(s): %d, total number: %d",
-                   numEvicted, availableElements.get(), totalSize.get());
+                    numEvicted, availableElements.get(), totalSize.get());
             log.debug(msg);
         }
     }
 
-    private void evictHelper(T element) {
-        evictOrRemoveNow(element, false);
-    }
-
-    private void removeNowHelper(T element) {
-        evictOrRemoveNow(element, true);
-    }
 
     private void evictOrRemoveNow(T element, boolean instantly) {
         val timestamp = expiring.get(element);
