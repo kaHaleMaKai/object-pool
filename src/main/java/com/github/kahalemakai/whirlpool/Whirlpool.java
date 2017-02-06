@@ -62,6 +62,9 @@ public class Whirlpool<T> implements Poolable<T> {
     @Getter
     private final long expirationTime;
 
+    // TODO use weak references (and weak key maps etc. for pool objects)
+    // setup referencequeues and close objects regularly
+    // could be scheduled along with eviction
     private final Set<T> inUse;
     private final Map<T, Long> expiring;
     private final LinkedList<T> orderedExpiringObjects;
@@ -364,9 +367,18 @@ public class Whirlpool<T> implements Poolable<T> {
     }
 
     /**
-     * {@inheritDoc}
+     * Evict a specific object from the pool, if it is available
+     * and has expired.
+     * <p>
+     * This method should block. An unchecked exception may be thrown
+     * if the element is not present, but it may be silently ignored
+     * as well.
+     * @param element
+     *     the object to evict from the pool
+     * @throws PoolException
+     *     if a {@link #closeElement(Object)} method needs to be
+     *     called, and fails
      */
-    @Override
     public void evict(T element) {
         throwIfClosed();
         $lock.lock();
@@ -381,9 +393,23 @@ public class Whirlpool<T> implements Poolable<T> {
     }
 
     /**
-     * {@inheritDoc}
+     * Evict a specific object from the pool, if it is available
+     * and has expired.
+     * <p>
+     * This method should timeout after {@code millis} milliseconds.
+     * An unchecked exception may be thrown
+     * if the element is not present, but it may be silently ignored
+     * as well.
+     * @param element
+     *     the object to evict from the pool
+     * @param millis
+     *     timeout in milliseconds
+     * @throws InterruptedException
+     *     if timed out
+     * @throws PoolException
+     *     if a {@link #closeElement(Object)} method needs to be
+     *     called, and fails
      */
-    @Override
     public void evict(T element, long millis) throws InterruptedException {
         throwIfClosed();
         if (availableElementsEstimate() == 0) {
@@ -403,9 +429,17 @@ public class Whirlpool<T> implements Poolable<T> {
     }
 
     /**
-     * {@inheritDoc}
+     * Remove an object now from the pool, if it is available.
+     * <p>
+     * This method should block. An unchecked exception may be thrown
+     * if the element is not present, but it may be silently ignored
+     * as well.
+     * @param element
+     *     the element to remove
+     * @throws PoolException
+     *     if the associated {@link #closeElement(Object)} method needs to be
+     *     called, and fails
      */
-    @Override
     public void removeNow(T element) {
         throwIfClosed();
         if (availableElementsEstimate() == 0) {
@@ -420,9 +454,22 @@ public class Whirlpool<T> implements Poolable<T> {
     }
 
     /**
-     * {@inheritDoc}
+     * Remove an object now from the pool, if it is available.
+     * <p>
+     * This method should timeout after {@code millis} milliseconds.
+     * An unchecked exception may be thrown
+     * if the element is not present, but it may be silently ignored
+     * as well.
+     * @param element
+     *     the element to remove
+     * @param millis
+     *     timeout in milliseconds
+     * @throws InterruptedException
+     *     if timed out
+     * @throws PoolException
+     *     if the associated {@link #closeElement(Object)} method needs to be
+     *     called, and fails
      */
-    @Override
     public void removeNow(T element, long millis) throws InterruptedException {
         throwIfClosed();
         if (availableElementsEstimate() == 0) {
