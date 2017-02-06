@@ -1,5 +1,7 @@
 package com.github.kahalemakai.whirlpool;
 
+import com.github.kahalemakai.whirlpool.eviction.AutoClosing;
+
 /**
  * The {@code Poolable} defines an interface for object pools.
  * <p>
@@ -46,6 +48,30 @@ public interface Poolable<T> extends AutoCloseable {
      *    handing it out, and the creation fails
      */
     T borrow(long millis) throws InterruptedException;
+
+    /**
+     * Borrow an object from the pool in a blocking way.
+     * @return
+     *     an object from the pool, wrapped into an {@link AutoClosing}
+     * @throws PoolException
+     *    if an object needs to be created before
+     *    handing it out, and the creation fails
+     */
+    AutoClosing<T> borrowKindly();
+    /**
+     * Borrow an object from the pool and timeout after
+     * {@code millis} milliseconds.
+     * @param millis
+     *     timeout in milliseconds
+     * @return
+     *     an object from the pool, wrapped into an {@link AutoClosing}
+     * @throws InterruptedException
+     *     if timed out
+     * @throws PoolException
+     *    if an object needs to be created before
+     *    handing it out, and the creation fails
+     */
+    AutoClosing<T> borrowKindly(long millis) throws InterruptedException;
 
     /**
      * Return an object into the pool in a blocking fashion.

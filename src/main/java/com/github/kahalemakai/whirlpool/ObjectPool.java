@@ -1,14 +1,12 @@
 package com.github.kahalemakai.whirlpool;
 
 import com.github.kahalemakai.whirlpool.eviction.AutoClosing;
-import com.github.kahalemakai.whirlpool.eviction.EvictionScheduler;
-import lombok.*;
+import lombok.Builder;
 import lombok.extern.log4j.Log4j;
+import lombok.val;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -25,42 +23,7 @@ import java.util.function.Supplier;
  *     type of objects in the pool
  */
 @Log4j
-public class ObjectPool<T> implements Poolable<T> {
-
-    private static final long SECOND = 1000;
-
-    public static final long DEFAULT_EXPIRATION_TIME = 30 * SECOND;
-
-    private static final EvictionScheduler EVICTION_SCHEDULER;
-    static {
-        EVICTION_SCHEDULER = EvictionScheduler.init();
-    }
-
-    private static final Supplier<?> DEFAULT_CREATE_FN;
-    static {
-        DEFAULT_CREATE_FN = () -> {
-            throw new UnsupportedOperationException("missing Supplier to create elements");
-        };
-    }
-
-    private static final Predicate<?> DEFAULT_VALIDATION_FN;
-    static {
-        DEFAULT_VALIDATION_FN = (t) -> true;
-    }
-
-    private static final Consumer<?> NO_OP_CONSUMER;
-    static {
-        NO_OP_CONSUMER = (t) -> { };
-    }
-
-    private final AtomicInteger availableElements = new AtomicInteger(0);
-    private final AtomicInteger totalSize = new AtomicInteger(0);
-
-    /**
-     * @return {@inheritDoc}
-     */
-    @Getter
-    private final long expirationTime;
+public final class ObjectPool<T> extends AbstractObjectPool<T> {
 
     // TODO use weak references (and weak key maps etc. for pool objects)
     // setup referencequeues and close objects regularly
@@ -71,14 +34,6 @@ public class ObjectPool<T> implements Poolable<T> {
 
     private final Lock $lock;
 
-    private final Supplier<T> createFn;
-    private final Predicate<T> validationFn;
-    private final Consumer<T> closeFn;
-    private final Consumer<T> prepareFn;
-    private final Consumer<T> resetFn;
-
-    private final AtomicBoolean closed = new AtomicBoolean(false);
-
     @Builder
     public ObjectPool(final long expirationTime,
                       final Supplier<T> onCreate,
@@ -86,51 +41,16 @@ public class ObjectPool<T> implements Poolable<T> {
                       final Consumer<T> onClose,
                       final Consumer<T> onPrepare,
                       final Consumer<T> onReset) {
-        this.expirationTime = expirationTime;
+        super(expirationTime,
+                onCreate,
+                onValidation,
+                onClose,
+                onPrepare,
+                onReset);
         this.inUse = new HashSet<>();
         this.expiring = new HashMap<>();
         this.$lock = new ReentrantLock();
         this.orderedExpiringObjects = new LinkedList<>();
-        if (onCreate == null) {
-            @SuppressWarnings("unchecked")
-            final Supplier<T> createFn = (Supplier<T>) DEFAULT_CREATE_FN;
-            this.createFn = createFn;
-        }
-        else {
-            this.createFn = onCreate;
-        }
-        if (onClose == null) {
-            @SuppressWarnings("unchecked")
-            final Consumer<T> closeFn = (Consumer<T>) NO_OP_CONSUMER;
-            this.closeFn = closeFn;
-        }
-        else {
-            this.closeFn = onClose;
-        }
-        if (onValidation == null) {
-            @SuppressWarnings("unchecked")
-            final Predicate<T> validationFn = (Predicate<T>) DEFAULT_VALIDATION_FN;
-            this.validationFn = validationFn;
-        }
-        else {
-            this.validationFn = onValidation;
-        }
-        if (onReset == null) {
-            @SuppressWarnings("unchecked")
-            final Consumer<T> resetFn = (Consumer<T>) NO_OP_CONSUMER;
-            this.resetFn = resetFn;
-        }
-        else {
-            this.resetFn = onReset;
-        }
-        if (onPrepare == null) {
-            @SuppressWarnings("unchecked")
-            final Consumer<T> prepareFn = (Consumer<T>) NO_OP_CONSUMER;
-            this.prepareFn = prepareFn;
-        }
-        else {
-            this.prepareFn = onPrepare;
-        }
     }
 
     @SuppressWarnings("unchecked")
@@ -158,39 +78,6 @@ public class ObjectPool<T> implements Poolable<T> {
 
     public ObjectPool() {
         this(DEFAULT_EXPIRATION_TIME);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public boolean validate(T element) {
-        return validationFn.test(element);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void closeElement(T element) {
-        if (log.isDebugEnabled()) {
-            val msg = "closing pooled object " + element;
-            log.debug(msg);
-        }
-        this.closeFn.accept(element);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public T createElement() {
-        val element = createFn.get();
-        if (log.isDebugEnabled()) {
-            val msg = "creating new element " + element;
-            log.debug(msg);
-        }
-        return element;
     }
 
     /**
@@ -488,55 +375,9 @@ public class ObjectPool<T> implements Poolable<T> {
         throw new InterruptedException(msg);
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void prepareElement(T element) {
-        this.prepareFn.accept(element);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void resetElement(T element) {
-        this.resetFn.accept(element);
-    }
-
-
-    /**
-     * Run eviction on this object pool periodically in the background.
-     * <p>
-     * All eviction tasks are scheduled by a single timer, so adding
-     * a new pool should not account for a performance penalty.
-     * <p>
-     * This method will only add a task on its first call, or after
-     * calling {@link #removeFromEvictionSchedule()}.
-     */
-    public void scheduleForEviction() {
-        throwIfClosed();
-        ObjectPool.EVICTION_SCHEDULER.addPoolToSchedule(this);
-    }
-
-    /**
-     * Remove an object pool from eviction in background, if
-     * it has been registered before.
-     */
-    public void removeFromEvictionSchedule() {
-        throwIfClosed();
-        ObjectPool.EVICTION_SCHEDULER.removePoolFromSchedule(this);
-    }
-
     /* ******************************************************
      *                    public method                    *
      * *****************************************************/
-
-    private void throwIfClosed() {
-        if (closed.get()) {
-            throw PoolException.poolClosed();
-        }
-    }
 
     private void evictHelper() {
         evictOrRemove(false);
