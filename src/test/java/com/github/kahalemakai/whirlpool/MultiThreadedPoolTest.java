@@ -12,9 +12,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.Assert.assertEquals;
 
-public class MultiThreadedWhirlpoolTest {
+public class MultiThreadedPoolTest {
 
-    private Whirlpool<Integer> pool;
+    private ObjectPool<Integer> pool;
     private final long expirationTime = 100;
     private volatile int counter;
     private final int cycles = 300;
@@ -44,7 +44,7 @@ public class MultiThreadedWhirlpoolTest {
         val threads = new ArrayList<Thread>();
         val numThreads = 4;
         val numCycles = 1000000;
-        Logger.getLogger(Whirlpool.class).setLevel(Level.INFO);
+        Logger.getLogger(ObjectPool.class).setLevel(Level.INFO);
         for (int i = 0; i < numThreads; ++i) {
             val thread = new Thread(() -> {
                 for (int j = 0; j < numCycles; ++j) {
@@ -68,7 +68,7 @@ public class MultiThreadedWhirlpoolTest {
     @Before
     public void setUp() throws Exception {
         counter = 0;
-        pool = Whirlpool.<Integer>builder()
+        pool = ObjectPool.<Integer>builder()
                 .onCreate(() -> counter++)
                 .expirationTime(expirationTime)
                 .onClose(t -> counter--)

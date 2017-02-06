@@ -25,7 +25,7 @@ import java.util.function.Supplier;
  *     type of objects in the pool
  */
 @Log4j
-public class Whirlpool<T> implements Poolable<T> {
+public class ObjectPool<T> implements Poolable<T> {
 
     private static final long SECOND = 1000;
 
@@ -80,12 +80,12 @@ public class Whirlpool<T> implements Poolable<T> {
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
     @Builder
-    public Whirlpool(final long expirationTime,
-                     final Supplier<T> onCreate,
-                     final Predicate<T> onValidation,
-                     final Consumer<T> onClose,
-                     final Consumer<T> onPrepare,
-                     final Consumer<T> onReset) {
+    public ObjectPool(final long expirationTime,
+                      final Supplier<T> onCreate,
+                      final Predicate<T> onValidation,
+                      final Consumer<T> onClose,
+                      final Consumer<T> onPrepare,
+                      final Consumer<T> onReset) {
         this.expirationTime = expirationTime;
         this.inUse = new HashSet<>();
         this.expiring = new HashMap<>();
@@ -134,9 +134,9 @@ public class Whirlpool<T> implements Poolable<T> {
     }
 
     @SuppressWarnings("unchecked")
-    public Whirlpool(final long expirationTime,
-                     final Supplier<T> createFn,
-                     final Predicate<T> validationFn) {
+    public ObjectPool(final long expirationTime,
+                      final Supplier<T> createFn,
+                      final Predicate<T> validationFn) {
         this(expirationTime,
                 createFn,
                 validationFn,
@@ -146,17 +146,17 @@ public class Whirlpool<T> implements Poolable<T> {
     }
 
     @SuppressWarnings("unchecked")
-    public Whirlpool(final long expirationTime,
-                     final Supplier<T> createFn) {
+    public ObjectPool(final long expirationTime,
+                      final Supplier<T> createFn) {
         this(expirationTime, createFn, (Predicate<T>) DEFAULT_VALIDATION_FN);
     }
 
     @SuppressWarnings("unchecked")
-    public Whirlpool(final long expirationTime) {
+    public ObjectPool(final long expirationTime) {
         this(expirationTime, (Supplier<T>) DEFAULT_CREATE_FN);
     }
 
-    public Whirlpool() {
+    public ObjectPool() {
         this(DEFAULT_EXPIRATION_TIME);
     }
 
@@ -516,7 +516,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     public void scheduleForEviction() {
         throwIfClosed();
-        Whirlpool.EVICTION_SCHEDULER.addPoolToSchedule(this);
+        ObjectPool.EVICTION_SCHEDULER.addPoolToSchedule(this);
     }
 
     /**
@@ -525,7 +525,7 @@ public class Whirlpool<T> implements Poolable<T> {
      */
     public void removeFromEvictionSchedule() {
         throwIfClosed();
-        Whirlpool.EVICTION_SCHEDULER.removePoolFromSchedule(this);
+        ObjectPool.EVICTION_SCHEDULER.removePoolFromSchedule(this);
     }
 
     /* ******************************************************

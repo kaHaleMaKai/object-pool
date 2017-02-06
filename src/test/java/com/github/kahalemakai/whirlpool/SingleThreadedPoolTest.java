@@ -8,8 +8,8 @@ import java.util.ArrayList;
 
 import static org.junit.Assert.assertEquals;
 
-public class SingleThreadedWhirlpoolTest {
-    private Whirlpool<Integer> pool;
+public class SingleThreadedPoolTest {
+    private ObjectPool<Integer> pool;
     private final long expirationTime = 100;
     private volatile int counter;
 
@@ -28,7 +28,7 @@ public class SingleThreadedWhirlpoolTest {
     @Test(expected = InterruptedException.class)
     public void interruptedOnBorrow() throws Exception {
         try {
-            val otherPool = Whirlpool.<Integer>builder()
+            val otherPool = ObjectPool.<Integer>builder()
                     .onCreate(() -> {
                         try {
                             System.out.println("sleeping on thread " + Thread.currentThread().getName());
@@ -132,7 +132,7 @@ public class SingleThreadedWhirlpoolTest {
     @Test
     public void validation() throws Exception {
         final int maxAllowedInt = 5;
-        val intPool = Whirlpool.<Integer>builder()
+        val intPool = ObjectPool.<Integer>builder()
                 .expirationTime(expirationTime)
                 .onCreate(() -> counter++)
                 .onClose(t -> counter = 0)
@@ -167,7 +167,7 @@ public class SingleThreadedWhirlpoolTest {
     @Before
     public void setUp() throws Exception {
         counter = 0;
-        pool = Whirlpool.<Integer>builder()
+        pool = ObjectPool.<Integer>builder()
                 .onCreate(() -> counter++)
                 .expirationTime(expirationTime)
                 .onClose(t -> counter--)
