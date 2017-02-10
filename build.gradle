@@ -36,6 +36,7 @@ dependencies {
     compileOnly 'org.projectlombok:lombok'
     compile 'log4j:log4j'
     compile 'log4j:apache-log4j-extras'
+    compile 'com.github.kahalemakai:tuples:0.4.0'
     testCompile group: 'junit', name: 'junit', version: '4.12'
     testCompile 'org.projectlombok:lombok'
 }
