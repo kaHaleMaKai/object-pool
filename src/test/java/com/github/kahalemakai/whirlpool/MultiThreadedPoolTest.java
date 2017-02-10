@@ -44,6 +44,7 @@ public class MultiThreadedPoolTest {
         val threads = new ArrayList<Thread>();
         val numThreads = 4;
         val numCycles = 1000000;
+        Logger.getLogger(AbstractObjectPool.class).setLevel(Level.INFO);
         Logger.getLogger(ObjectPool.class).setLevel(Level.INFO);
         for (int i = 0; i < numThreads; ++i) {
             val thread = new Thread(() -> {

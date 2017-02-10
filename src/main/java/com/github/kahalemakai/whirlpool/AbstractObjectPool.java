@@ -143,7 +143,7 @@ abstract class AbstractObjectPool<T> implements Poolable<T> {
     public T createElement() {
         val element = createFn.get();
         if (log.isDebugEnabled()) {
-            val msg = "creating new element " + element;
+            val msg = "created new element " + element;
             log.debug(msg);
         }
         return element;
