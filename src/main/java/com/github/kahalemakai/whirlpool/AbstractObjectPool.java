@@ -6,6 +6,9 @@ import lombok.Getter;
 import lombok.extern.log4j.Log4j;
 import lombok.val;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -26,11 +29,21 @@ abstract class AbstractObjectPool<T> implements Poolable<T> {
 
     private static final long SECOND = 1000;
 
+    public static final boolean DEFAULT_ASYNC_CLOSE = false;
+    public static final boolean DEFAULT_ASYNC_UNHAND = false;
+    public static final boolean DEFAULT_ASYNC_FILL = true;
+    public static final int DEFAULT_MIN_SIZE = 0;
+    public static final int DEFAULT_MAX_SIZE = -1;
     public static final long DEFAULT_EXPIRATION_TIME = 30 * SECOND;
 
     private static final EvictionScheduler EVICTION_SCHEDULER;
     static {
         EVICTION_SCHEDULER = EvictionScheduler.init();
+    }
+
+    private static final ExecutorService EXECUTOR_SERVICE;
+    static {
+        EXECUTOR_SERVICE = Executors.newCachedThreadPool();
     }
 
     protected static final Supplier<?> DEFAULT_CREATE_FN;
@@ -205,8 +218,12 @@ abstract class AbstractObjectPool<T> implements Poolable<T> {
         AbstractObjectPool.EVICTION_SCHEDULER.removePoolFromSchedule(this);
     }
 
+    protected Future<?> runAsync(final Runnable runnable) {
+        return EXECUTOR_SERVICE.submit(runnable);
+    }
+
     /* ******************************************************
-     *                    public method                    *
+     *                   protected method                   *
      * *****************************************************/
 
     protected void throwIfClosed() {

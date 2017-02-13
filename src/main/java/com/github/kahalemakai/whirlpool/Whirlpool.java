@@ -2,6 +2,7 @@ package com.github.kahalemakai.whirlpool;
 
 import com.github.kahalemakai.tuples.Tuple;
 import lombok.Builder;
+import lombok.Getter;
 import lombok.extern.log4j.Log4j;
 import lombok.val;
 
@@ -18,11 +19,31 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * Basic implementation of the {@link Poolable} interface.
+ * Concurrent implementation of the {@link Poolable Poolable} interface.
  * <p>
  * Besides implementing the interface, periodic eviction of
  * expired elements in the object pool may be set up
  * by calling {@link #scheduleForEviction()}.
+ * <p>
+ * This class uses counting {@link Semaphore Semaphores} as synchronization guards.
+ * Two are employed, one as a necessary condition for borrowing, and
+ * another one as sufficient condition. On borrowing, both need to
+ * be acquired in order to obtain an object from the pool. When
+ * {@link #unhand(Object) unhanding} an object, the necessary one is
+ * released on entry, and the sufficient one is only released after
+ * completing the unhand operation. Under high workloads, only a small
+ * amount of contraction should be experienced, but that has not been
+ * tested yet.
+ *
+ * <h4>TODO</h4>
+ *
+ * <ul>
+ *     <li>document all remaining methods</li>
+ *     <li>benchmark</li>
+ *     <li>add further tests</li>
+ *     <li>add log output (especially on debug level)</li>
+ * </ul>
+ *
  * @param <T>
  *     type of objects in the pool
  */
@@ -34,6 +55,10 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
     private final ReferenceQueue<T> refQueue;
     private final Map<T, Long> tracker;
     private final Deque<Tuple<T, Long>> queue;
+    @Getter
+    private final int minSize;
+    @Getter
+    private final int maxSize;
 
     /**
      * Counting semaphore indicating the necessasry
@@ -49,27 +74,51 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
      */
     private final Semaphore sufficiency;
     private final AtomicBoolean evictionActive;
+    @Getter
+    private final boolean asyncClose;
+    @Getter
+    private final boolean asyncUnhand;
+    @Getter
+    private final boolean asyncFill;
 
     @Builder
-    public Whirlpool(final long expirationTime,
+    private Whirlpool(final long expirationTime,
                      final Supplier<T> onCreate,
                      final Predicate<T> onValidation,
                      final Consumer<T> onClose,
                      final Consumer<T> onPrepare,
                      final Consumer<T> onReset,
-                     final boolean fairThreadAccess) {
+                     final boolean fairThreadAccess,
+                     int minSize,
+                     int maxSize,
+                     boolean asyncClose,
+                     boolean asyncUnhand,
+                     boolean asyncFill) {
         super(expirationTime,
                 onCreate,
                 onValidation,
                 onClose,
                 onPrepare,
                 onReset);
+        if (maxSize <= 0) {
+            maxSize = -1;
+        }
+        checkSizeArguments(minSize, maxSize);
         refQueue = new ReferenceQueue<>();
         tracker = new WeakHashMap<>();
         queue = new ConcurrentLinkedDeque<>();
-        necessity = new Semaphore(0, fairThreadAccess);
+        necessity = new Semaphore(minSize, fairThreadAccess);
         sufficiency = new Semaphore(0, fairThreadAccess);
         evictionActive = new AtomicBoolean(false);
+        this.minSize = minSize;
+        this.maxSize = maxSize;
+        for (int i = 0; i < minSize; ++i) {
+            enqueue(createElement());
+        }
+        sufficiency.release(minSize);
+        this.asyncClose = asyncClose;
+        this.asyncUnhand = asyncUnhand;
+        this.asyncFill = asyncFill;
     }
 
     @SuppressWarnings("unchecked")
@@ -82,7 +131,12 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
                 (Consumer<T>) NO_OP_CONSUMER,
                 (Consumer<T>) NO_OP_CONSUMER,
                 (Consumer<T>) NO_OP_CONSUMER,
-                DEFAULT_THREAD_ACCESS_FAIRNESS);
+                DEFAULT_THREAD_ACCESS_FAIRNESS,
+                DEFAULT_MIN_SIZE,
+                DEFAULT_MAX_SIZE,
+                DEFAULT_ASYNC_CLOSE,
+                DEFAULT_ASYNC_UNHAND,
+                DEFAULT_ASYNC_FILL);
     }
 
     @SuppressWarnings("unchecked")
@@ -105,64 +159,17 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
      */
     @Override
     public T borrow() {
-        throwIfClosed();
-        boolean necessary = false;
-        try {
-            necessary = necessity.tryAcquire(0L, TimeUnit.NANOSECONDS);
-        } catch (InterruptedException e) {
-            Thread.interrupted();
-        }
-        if (necessary) {
-            try {
-                sufficiency.acquire();
-            } catch (InterruptedException e) {
-                Thread.interrupted();
-                necessity.release();
-                return createElement();
-            }
-            val head = queue.poll();
-            assert head != null;
-            val obj = head.first();
-            if (!validate(obj)) {
-                closeElement(obj);
-                return createElement();
-            }
-            return obj;
-        }
-        else {
-            return createElement();
-        }
+        beforeBorrowing();
+        val obj = borrowHelper();
+        afterBorrowing();
+        return obj;
     }
 
     public T take() {
-        throwIfClosed();
-        Tuple<T, Long> head = null;
-        boolean necessary = false;
-        try {
-            necessary = necessity.tryAcquire(0L, TimeUnit.NANOSECONDS);
-        } catch (InterruptedException e) {
-            Thread.interrupted();
-        }
-        if (necessary) {
-            boolean sufficient = false;
-            try {
-                sufficient = sufficiency.tryAcquire(0L, TimeUnit.NANOSECONDS);
-            } catch (InterruptedException e) {
-                Thread.interrupted();
-                necessity.release();
-            }
-            if (sufficient) {
-                head = queue.poll();
-            }
-            else {
-                necessity.release();
-            }
-            assert head != null;
-            return head.first();
-        }
-        else {
-            return createElement();
-        }
+        beforeBorrowing();
+        val obj = takeHelper();
+        afterBorrowing();
+        return obj;
     }
 
     /**
@@ -170,44 +177,17 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
      */
     @Override
     public T borrow(long millis) throws InterruptedException {
-        throwIfClosed();
-        Tuple<T, Long> head = null;
-        val nanos = TimeUnit.MILLISECONDS.toNanos(millis);
-        val start = System.nanoTime();
-        if (necessity.tryAcquire(nanos, TimeUnit.NANOSECONDS)) {
-            val remainder = System.nanoTime() - start - nanos;
-            boolean permitted;
-            try {
-                permitted = sufficiency.tryAcquire(remainder, TimeUnit.NANOSECONDS);
-            } catch (InterruptedException e) {
-                necessity.release();
-                throw e;
-            }
-            if (permitted) {
-                head = queue.poll();
-            }
-            else {
-                necessity.release();
-            }
-            assert head != null;
-            return head.first();
-        }
-        else {
-            return createElement();
-        }
+        beforeBorrowing();
+        val obj = borrowHelper(millis);
+        afterBorrowing();
+        return obj;
     }
 
     public T waitAndBorrow() throws InterruptedException {
-        throwIfClosed();
-        necessity.acquire();
-        try {
-            sufficiency.acquire();
-        } catch (InterruptedException e) {
-            necessity.release();
-            throw e;
-        }
-        val head = queue.poll();
-        return head.first();
+        beforeBorrowing();
+        val obj = waitAndBorrowHelper();
+        afterBorrowing();
+        return obj;
     }
 
     /**
@@ -216,6 +196,8 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
     @Override
     public void unhand(T element) {
         boolean elementIsKnown = tracker.containsKey(element);
+        // there will be no false positives, as keys are weak and
+        // only removed when objects become garbage
         if (!elementIsKnown) {
             synchronized (tracker) {
                 elementIsKnown = tracker.containsKey(element);
@@ -228,8 +210,25 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
         }
         if (!closed.get()) {
             necessity.release();
+            if (asyncUnhand) {
+                runAsync(() -> {
+                    enqueue(element);
+                    sufficiency.release();
+                    if (0 < maxSize) {
+                        while (maxSize < necessity.availablePermits()) {
+                            closeElement(take());
+                        }
+                    }
+                });
+                return;
+            }
             enqueue(element);
             sufficiency.release();
+            if (0 < maxSize) {
+                while (maxSize < necessity.availablePermits()) {
+                    closeElement(take());
+                }
+            }
         }
         else {
             closeElement(element);
@@ -254,10 +253,12 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
 
     /**
      * {@inheritDoc}
+     * This method delivers the same result as {@link #availableElements()}
+     * due to the usage of counting {@link Semaphore Semaphores}
      */
     @Override
     public int availableElementsEstimate() {
-        return necessity.availablePermits();
+        return availableElements();
     }
 
     /**
@@ -286,6 +287,7 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
     public void evictAll() {
         throwIfClosed();
         cleanupReferences();
+        fillToMinSize(false);
         val ts = System.currentTimeMillis() - expirationTime;
         while (true) {
             if (!(evictHead(ts))) {
@@ -301,6 +303,7 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
     public void evictAll(long millis) throws InterruptedException {
         throwIfClosed();
         cleanupReferences();
+        fillToMinSize(false);
         val ts = System.currentTimeMillis() - expirationTime;
         while (true)
             if (!evictHead(ts, millis)) {
@@ -345,13 +348,19 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
 
     @Override
     public void closeElement(T element) {
-        try {
-            super.closeElement(element);
-        } finally {
-            synchronized (tracker) {
-                tracker.remove(element);
-            }
+        if (asyncClose) {
+            runAsync(() -> {
+                synchronized (tracker) {
+                    tracker.remove(element);
+                }
+                super.closeElement(element);
+            });
+            return;
         }
+        synchronized (tracker) {
+            tracker.remove(element);
+        }
+        super.closeElement(element);
     }
 
     @Override
@@ -363,9 +372,115 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
         return element;
     }
 
-   /* ******************************************************
-     *                    public method                    *
-     * *****************************************************/
+   /* *****************************************************
+    *                    private method                   *
+    * *****************************************************/
+
+    private void beforeBorrowing() {
+        throwIfClosed();
+    }
+
+    private void afterBorrowing() {
+        fillToMinSize(asyncFill);
+    }
+
+    private T borrowHelper() {
+        boolean necessary = false;
+        try {
+            necessary = necessity.tryAcquire(0L, TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+            Thread.interrupted();
+        }
+        if (necessary) {
+            try {
+                sufficiency.acquire();
+            } catch (InterruptedException e) {
+                Thread.interrupted();
+                necessity.release();
+                return createElement();
+            }
+            val head = queue.poll();
+            assert head != null;
+            val obj = head.first();
+            if (!validate(obj)) {
+                closeElement(obj);
+                return createElement();
+            }
+            return obj;
+        }
+        else {
+            return createElement();
+        }
+    }
+
+    private T takeHelper() {
+        Tuple<T, Long> head = null;
+        boolean necessary = false;
+        try {
+            necessary = necessity.tryAcquire(0L, TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+            Thread.interrupted();
+        }
+        if (necessary) {
+            boolean sufficient = false;
+            try {
+                sufficient = sufficiency.tryAcquire(0L, TimeUnit.NANOSECONDS);
+            } catch (InterruptedException e) {
+                Thread.interrupted();
+                necessity.release();
+            }
+            if (sufficient) {
+                head = queue.poll();
+            }
+            else {
+                necessity.release();
+            }
+            assert head != null;
+            return head.first();
+        }
+        else {
+            return createElement();
+        }
+    }
+
+    private T borrowHelper(long millis) throws InterruptedException {
+        Tuple<T, Long> head = null;
+        val nanos = TimeUnit.MILLISECONDS.toNanos(millis);
+        val start = System.nanoTime();
+        if (necessity.tryAcquire(nanos, TimeUnit.NANOSECONDS)) {
+            val remainder = System.nanoTime() - start - nanos;
+            boolean permitted;
+            try {
+                permitted = sufficiency.tryAcquire(remainder, TimeUnit.NANOSECONDS);
+            } catch (InterruptedException e) {
+                necessity.release();
+                throw e;
+            }
+            if (permitted) {
+                head = queue.poll();
+            }
+            else {
+                necessity.release();
+            }
+            assert head != null;
+            return head.first();
+        }
+        else {
+            return createElement();
+        }
+    }
+
+    private T waitAndBorrowHelper() throws InterruptedException {
+        necessity.acquire();
+        try {
+            sufficiency.acquire();
+        } catch (InterruptedException e) {
+            necessity.release();
+            throw e;
+        }
+        val head = queue.poll();
+        return head.first();
+    }
 
     private boolean evictHead(long ts) {
         // prevent from running concurrently
@@ -374,7 +489,7 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
         }
         try {
             // no work to do
-            if (necessity.availablePermits() == 0) {
+            if (necessity.availablePermits() <= this.minSize) {
                 return false;
             }
             boolean sufficient;
@@ -395,12 +510,26 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
                         Thread.interrupted();
                     }
                     if (!necessary) {
+                        if (asyncUnhand) {
+                            runAsync(() -> {
+                                enqueue(createElement());
+                                sufficiency.release();
+                            });
+                            return true;
+                        }
                         enqueue(createElement());
                         sufficiency.release();
                     }
                     return true;
                 }
                 else {
+                    if (asyncUnhand) {
+                        runAsync(() -> {
+                            queue.addFirst(head);
+                            sufficiency.release();
+                        });
+                        return false;
+                    }
                     queue.addFirst(head);
                     sufficiency.release();
                 }
@@ -418,7 +547,7 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
         }
         try {
             // no work to do
-            if (necessity.availablePermits() == 0) {
+            if (necessity.availablePermits() <= this.minSize) {
                 return false;
             }
             boolean sufficient;
@@ -442,12 +571,26 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
                         Thread.interrupted();
                     }
                     if (!necessary) {
+                        if (asyncUnhand) {
+                            runAsync(() -> {
+                                enqueue(createElement());
+                                sufficiency.release();
+                            });
+                            return true;
+                        }
                         enqueue(createElement());
                         sufficiency.release();
                     }
                     return true;
                 }
                 else {
+                    if (asyncUnhand) {
+                        runAsync(() -> {
+                            queue.addFirst(head);
+                            sufficiency.release();
+                        });
+                        return false;
+                    }
                     queue.addFirst(head);
                     sufficiency.release();
                 }
@@ -499,6 +642,42 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
     private void enqueue(T element) {
         val t = Tuple.of(element, System.currentTimeMillis());
         queue.add(t);
+    }
+
+    private void fillToMinSize(boolean async) {
+        if (minSize > 0 && necessity.availablePermits() < minSize && sufficiency.availablePermits() < minSize) {
+            if (async) {
+                runAsync(this::fillToMinSizeHelper);
+                return;
+            }
+            fillToMinSizeHelper();
+        }
+    }
+
+    private void fillToMinSizeHelper() {
+        while (necessity.availablePermits() < minSize && sufficiency.availablePermits() < minSize) {
+            necessity.release();
+            enqueue(createElement());
+            sufficiency.release();
+        }
+    }
+
+   /* *****************************************************
+    *                private static method                *
+    * *****************************************************/
+
+    private static void checkSizeArguments(int minSize, int maxSize) throws IllegalArgumentException {
+        // sanitize inputs
+        if (minSize < 0) {
+            val msg = String.format("wrong minSize. expected: minSize >= 0, got: %d", minSize);
+            log.error(msg);
+            throw new IllegalArgumentException(msg);
+        }
+        if (0 < maxSize && maxSize < minSize) {
+            val msg = "wrong pool size. expected: minSize <= maxSize, got: minSize > maxSize";
+            log.error(msg);
+            throw new IllegalArgumentException(msg);
+        }
     }
 
 }

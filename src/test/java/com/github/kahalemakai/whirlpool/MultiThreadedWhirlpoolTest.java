@@ -74,6 +74,8 @@ public class MultiThreadedWhirlpoolTest {
                 .onCreate(() -> counter.getAndIncrement())
                 .expirationTime(expirationTime)
                 .onClose(t -> counter.getAndDecrement())
+                .asyncUnhand(true)
+                .asyncClose(true)
                 .build();
     }
 
