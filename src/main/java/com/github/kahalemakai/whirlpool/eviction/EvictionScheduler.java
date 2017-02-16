@@ -1,6 +1,6 @@
 package com.github.kahalemakai.whirlpool.eviction;
 
-import com.github.kahalemakai.whirlpool.Poolable;
+import com.github.kahalemakai.whirlpool.ObjectPool;
 import lombok.extern.log4j.Log4j;
 import lombok.val;
 
@@ -13,10 +13,10 @@ public class EvictionScheduler {
     private Timer timer;
     private final Object[] $lock = new Object[0];
     private final AtomicInteger usageCount = new AtomicInteger(0);
-    private final Map<Poolable<?>, TimerTask> tracker;
+    private final Map<ObjectPool<?>, TimerTask> tracker;
 
     private EvictionScheduler() {
-        val map = new WeakHashMap<Poolable<?>, TimerTask>();
+        val map = new WeakHashMap<ObjectPool<?>, TimerTask>();
         tracker = Collections.synchronizedMap(map);
     }
 
@@ -28,7 +28,7 @@ public class EvictionScheduler {
         return usageCount.get() == 0;
     }
 
-    public void addPoolToSchedule(final Poolable<?> pool) {
+    public void addPoolToSchedule(final ObjectPool<?> pool) {
         long expTime;
         synchronized ($lock) {
             if (tracker.containsKey(pool) && tracker.get(pool) != null) {
@@ -51,7 +51,7 @@ public class EvictionScheduler {
         }
     }
 
-    public void removePoolFromSchedule(final Poolable<?> pool) {
+    public void removePoolFromSchedule(final ObjectPool<?> pool) {
         synchronized ($lock) {
             if (usageCount.get() == 0) {
                 return;

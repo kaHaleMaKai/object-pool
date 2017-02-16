@@ -6,6 +6,9 @@ import lombok.extern.log4j.Log4j;
 import lombok.val;
 
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -24,6 +27,16 @@ import java.util.function.Supplier;
  */
 @Log4j
 public final class ObjectPool<T> extends AbstractObjectPool<T> {
+
+    private static final com.github.kahalemakai.whirlpool.eviction.EvictionScheduler EVICTION_SCHEDULER;
+    static {
+        EVICTION_SCHEDULER = com.github.kahalemakai.whirlpool.eviction.EvictionScheduler.init();
+    }
+
+    private static final ExecutorService EXECUTOR_SERVICE;
+    static {
+        EXECUTOR_SERVICE = Executors.newCachedThreadPool();
+    }
 
     // TODO use weak references (and weak key maps etc. for pool objects)
     // setup referencequeues and close objects regularly
@@ -196,9 +209,14 @@ public final class ObjectPool<T> extends AbstractObjectPool<T> {
     }
 
     /**
-     * {@inheritDoc}
+     * Evict all objects from the pool, that are currently not in use
+     * and have expired.
+     * <p>
+     * This method should block.
+     * @throws PoolException
+     *     if a {@link #closeElement(Object)} method needs to be
+     *     called, and fails
      */
-    @Override
     public void evictAll() {
         throwIfClosed();
         if (!evictionPossible()) {
@@ -232,9 +250,19 @@ public final class ObjectPool<T> extends AbstractObjectPool<T> {
     }
 
     /**
-     * {@inheritDoc}
+     * Evict all objects from the pool, that are currently not in use
+     * and have expired.
+     * <p>
+     * This method should timeout after {@code millis} milliseconds.
+     *
+     * @param millis
+     *     timeout in milliseconds
+     * @throws InterruptedException
+     *     if timed out
+     * @throws PoolException
+     *     if a {@link #closeElement(Object)} method needs to be
+     *     called, and fails
      */
-    @Override
     public void evictAll(long millis) throws InterruptedException {
         throwIfClosed();
         if (!evictionPossible()) {
@@ -373,6 +401,34 @@ public final class ObjectPool<T> extends AbstractObjectPool<T> {
         val msg = String.format("timed out while removing an object on thread %s",
                 Thread.currentThread().getName());
         throw new InterruptedException(msg);
+    }
+
+
+    /**
+     * Run eviction on this object pool periodically in the background.
+     * <p>
+     * All eviction tasks are scheduled by a single timer, so adding
+     * a new pool should not account for a performance penalty.
+     * <p>
+     * This method will only add a task on its first call, or after
+     * calling {@link #removeFromEvictionSchedule()}.
+     */
+    public void scheduleForEviction() {
+        throwIfClosed();
+        EVICTION_SCHEDULER.addPoolToSchedule(this);
+    }
+
+    /**
+     * Remove an object pool from eviction in background, if
+     * it has been registered before.
+     */
+    public void removeFromEvictionSchedule() {
+        throwIfClosed();
+        EVICTION_SCHEDULER.removePoolFromSchedule(this);
+    }
+
+    protected Future<?> runAsync(final Runnable runnable) {
+        return EXECUTOR_SERVICE.submit(runnable);
     }
 
     /* ******************************************************

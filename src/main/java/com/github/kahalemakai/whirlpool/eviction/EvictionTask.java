@@ -1,6 +1,6 @@
 package com.github.kahalemakai.whirlpool.eviction;
 
-import com.github.kahalemakai.whirlpool.Poolable;
+import com.github.kahalemakai.whirlpool.ObjectPool;
 import lombok.extern.log4j.Log4j;
 
 import java.lang.ref.WeakReference;
@@ -11,19 +11,19 @@ import java.util.TimerTask;
 class EvictionTask extends TimerTask {
     private static final long EVICTION_TIMEOUT = 100;
 
-    private final WeakReference<? extends Poolable<?>> poolRef;
+    private final WeakReference<? extends ObjectPool<?>> poolRef;
 
-    Poolable<?> getPool() {
+    ObjectPool<?> getPool() {
         return poolRef.get();
     }
 
-    private EvictionTask(final Poolable<?> pool) {
-        this.poolRef = new WeakReference<Poolable<?>>(pool);
+    private EvictionTask(final ObjectPool<?> pool) {
+        this.poolRef = new WeakReference<ObjectPool<?>>(pool);
     }
 
     @Override
     public void run() {
-        Poolable<?> pool = poolRef.get();
+        ObjectPool<?> pool = poolRef.get();
         if (pool == null) {
             this.cancel();
             return;
@@ -69,7 +69,7 @@ class EvictionTask extends TimerTask {
     }
 
 
-    static EvictionTask of(final Poolable<?> pool) {
+    static EvictionTask of(final ObjectPool<?> pool) {
         return new EvictionTask(pool);
     }
 

@@ -1,29 +1,16 @@
 package com.github.kahalemakai.whirlpool;
 
 import com.github.kahalemakai.whirlpool.eviction.AutoClosing;
-import com.github.kahalemakai.whirlpool.eviction.EvictionScheduler;
 import lombok.Getter;
 import lombok.extern.log4j.Log4j;
 import lombok.val;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-/**
- * Basic implementation of the {@link Poolable} interface.
- * <p>
- * Besides implementing the interface, periodic eviction of
- * expired elements in the object pool may be set up
- * by calling {@link #scheduleForEviction()}.
- * @param <T>
- *     type of objects in the pool
- */
 @Log4j
 abstract class AbstractObjectPool<T> implements Poolable<T> {
 
@@ -35,16 +22,6 @@ abstract class AbstractObjectPool<T> implements Poolable<T> {
     public static final int DEFAULT_MIN_SIZE = 0;
     public static final int DEFAULT_MAX_SIZE = -1;
     public static final long DEFAULT_EXPIRATION_TIME = 30 * SECOND;
-
-    private static final EvictionScheduler EVICTION_SCHEDULER;
-    static {
-        EVICTION_SCHEDULER = EvictionScheduler.init();
-    }
-
-    private static final ExecutorService EXECUTOR_SERVICE;
-    static {
-        EXECUTOR_SERVICE = Executors.newCachedThreadPool();
-    }
 
     protected static final Supplier<?> DEFAULT_CREATE_FN;
     static {
@@ -192,34 +169,6 @@ abstract class AbstractObjectPool<T> implements Poolable<T> {
     @Override
     public void resetElement(T element) {
         this.resetFn.accept(element);
-    }
-
-
-    /**
-     * Run eviction on this object pool periodically in the background.
-     * <p>
-     * All eviction tasks are scheduled by a single timer, so adding
-     * a new pool should not account for a performance penalty.
-     * <p>
-     * This method will only add a task on its first call, or after
-     * calling {@link #removeFromEvictionSchedule()}.
-     */
-    public void scheduleForEviction() {
-        throwIfClosed();
-        AbstractObjectPool.EVICTION_SCHEDULER.addPoolToSchedule(this);
-    }
-
-    /**
-     * Remove an object pool from eviction in background, if
-     * it has been registered before.
-     */
-    public void removeFromEvictionSchedule() {
-        throwIfClosed();
-        AbstractObjectPool.EVICTION_SCHEDULER.removePoolFromSchedule(this);
-    }
-
-    protected Future<?> runAsync(final Runnable runnable) {
-        return EXECUTOR_SERVICE.submit(runnable);
     }
 
     /* ******************************************************

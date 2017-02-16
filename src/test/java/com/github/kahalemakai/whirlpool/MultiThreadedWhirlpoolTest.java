@@ -16,16 +16,17 @@ import static org.junit.Assert.assertEquals;
 public class MultiThreadedWhirlpoolTest {
 
     private Whirlpool<Integer> pool;
-    private final long expirationTime = 100;
+    private final long expirationTime = 1000;
     private AtomicInteger counter;
-    private final int cycles = 300;
+    private final int cycles = 100000;
 
     @Test
     public void bgEviction() throws Exception {
-        pool.scheduleForEviction();
+        Logger.getLogger(AbstractObjectPool.class).setLevel(Level.INFO);
+        Logger.getLogger(Whirlpool.class).setLevel(Level.INFO);
         pool.unhand(pool.borrow());
         assertEquals(1, pool.totalSize());
-        Thread.sleep(expirationTime * 2);
+        Thread.sleep(expirationTime + 10);
         assertEquals(0, pool.totalSize());
         val list = new ArrayList<Integer>();
         for (int i = 0; i < cycles; ++i) {
@@ -34,9 +35,9 @@ public class MultiThreadedWhirlpoolTest {
         for (int i = 0; i < cycles; ++i) {
             pool.unhand(list.remove(0));
         }
-        assertEquals(cycles, pool.totalSize());
-        Thread.sleep(2 * expirationTime);
-        assertEquals(0, pool.totalSize());
+        assertEquals(cycles, pool.availableElements());
+        Thread.sleep(expirationTime * 2);
+        assertEquals(0, pool.availableElements());
     }
 
     @Test
@@ -74,8 +75,10 @@ public class MultiThreadedWhirlpoolTest {
                 .onCreate(() -> counter.getAndIncrement())
                 .expirationTime(expirationTime)
                 .onClose(t -> counter.getAndDecrement())
-                .asyncUnhand(true)
                 .asyncClose(true)
+                .asyncUnhand(false)
+                .asyncCreate(true)
+                .parallelism(4)
                 .build();
     }
 

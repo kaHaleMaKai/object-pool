@@ -100,32 +100,6 @@ public interface Poolable<T> extends AutoCloseable {
     void unhand(T element, long millis) throws InterruptedException;
 
     /**
-     * Evict all objects from the pool, that are currently not in use
-     * and have expired.
-     * <p>
-     * This method should block.
-     * @throws PoolException
-     *     if a {@link #closeElement(Object)} method needs to be
-     *     called, and fails
-     */
-    void evictAll();
-    /**
-     * Evict all objects from the pool, that are currently not in use
-     * and have expired.
-     * <p>
-     * This method should timeout after {@code millis} milliseconds.
-     *
-     * @param millis
-     *     timeout in milliseconds
-     * @throws InterruptedException
-     *     if timed out
-     * @throws PoolException
-     *     if a {@link #closeElement(Object)} method needs to be
-     *     called, and fails
-     */
-    void evictAll(long millis) throws InterruptedException;
-
-    /**
      * Get the precise number of elements that are available
      * for borrowing now.
      * <p>
