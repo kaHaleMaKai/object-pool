@@ -3,9 +3,12 @@ package com.github.kahalemakai.whirlpool;
 import lombok.val;
 
 import java.lang.ref.WeakReference;
+import java.util.List;
 import java.util.TimerTask;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Scheduler {
 
@@ -15,7 +18,7 @@ public class Scheduler {
         this.scheduler = Executors.newScheduledThreadPool(parallelism, WhirlpoolThreadFactory.getInstance());
     }
 
-    public static Scheduler withThreads(int parallelism) {
+    public static Scheduler ofThreads(int parallelism) {
         return new Scheduler(parallelism);
     }
 
@@ -32,8 +35,21 @@ public class Scheduler {
         return scheduler.submit(r);
     }
 
+    public void repeatedly(Runnable r, long intervalInMilliSeconds) {
+        scheduler.scheduleAtFixedRate(r, intervalInMilliSeconds, intervalInMilliSeconds, TimeUnit.MILLISECONDS);
+    }
+
     public Future<?> closeElement(CloseElementTask task) {
         return scheduler.submit(task);
+    }
+
+    public <T> List<Future<T>> createElements(CreateElementTask<T> task, int count) {
+        return Stream.iterate(task, t -> t)
+                .map(this::createElement)
+                .limit(count)
+                .collect(Collectors.toList());
+
+
     }
 
     private static class WhirlpoolThreadFactory implements ThreadFactory {

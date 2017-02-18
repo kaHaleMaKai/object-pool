@@ -16,8 +16,9 @@ targetCompatibility = 1.8
 def delombokedDir = "${rootProject.buildDir}/src-delomboked"
 
 repositories {
-    jcenter()
     maven { url "file://${System.getProperty("user.home")}/.m2/repository" }
+    maven { url "https://dl.bintray.com/kahalemakai/maven" }
+    jcenter()
 }
 
 dependencyManagement {
@@ -36,7 +37,7 @@ dependencies {
     compileOnly 'org.projectlombok:lombok'
     compile 'log4j:log4j'
     compile 'log4j:apache-log4j-extras'
-    compile 'com.github.kahalemakai:tuples:0.4.0'
+    compile 'com.github.kahalemakai:safely:1.0.0-RC1'
     testCompile group: 'junit', name: 'junit', version: '4.12'
     testCompile 'org.projectlombok:lombok'
 }
@@ -101,3 +102,8 @@ task cleanTests(group: "verification") {
 task wrapper(type: Wrapper) {
     gradleVersion = '3.3'
 }
+//
+//def var(name, defaultValue=null) {
+//    def val = rootProject.findProperty(name)
+//    return val == null ? defaultValue : val
+//}

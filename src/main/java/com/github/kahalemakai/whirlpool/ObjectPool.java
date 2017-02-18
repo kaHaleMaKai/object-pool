@@ -410,7 +410,7 @@ public final class ObjectPool<T> extends AbstractObjectPool<T> {
      * All eviction tasks are scheduled by a single timer, so adding
      * a new pool should not account for a performance penalty.
      * <p>
-     * This method will only add a task on its first call, or after
+     * This method will only add a task on its first wrapCallable, or after
      * calling {@link #removeFromEvictionSchedule()}.
      */
     public void scheduleForEviction() {

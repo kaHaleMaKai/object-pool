@@ -1,5 +1,7 @@
 package com.github.kahalemakai.whirlpool;
 
+import com.github.kahalemakai.safely.Safely;
+import com.github.kahalemakai.safely.WrappingException;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.log4j.Log4j;
@@ -70,16 +72,16 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
      */
     private final Semaphore sufficiency;
     @Getter
-    private boolean asyncClose = true;
+    private final boolean asyncClose;
     @Getter
-    private boolean asyncUnhand = true;
+    private final boolean asyncUnhand;
     @Getter
-    private boolean asyncFill = true;
+    private final boolean asyncFill;
     @Getter
-    private boolean asyncCreate = true;
+    private final boolean asyncCreate;
 
     private final Scheduler scheduler;
-    private int parallelism = 1;
+    private final int parallelism;
 
     @Builder
     private Whirlpool(final long expirationTime,
@@ -113,16 +115,29 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
         sufficiency = new Semaphore(0, fairThreadAccess);
         this.minSize = minSize;
         this.maxSize = maxSize;
-        for (int i = 0; i < minSize; ++i) {
-            enqueue(createElement());
-        }
-        sufficiency.release(minSize);
         this.asyncClose = asyncClose;
         this.asyncUnhand = asyncUnhand;
         this.asyncFill = asyncFill;
         this.asyncCreate = asyncCreate;
         this.parallelism = parallelism;
-        this.scheduler = Scheduler.withThreads(parallelism);
+        val scheduler = Scheduler.ofThreads(parallelism);
+        scheduler.repeatedly(Safely.silently(this::cleanupReferences), expirationTime);
+        this.scheduler = scheduler;
+        val futures = scheduler.createElements(this::createElement, minSize);
+        try {
+            futures.stream()
+                    .parallel()
+                    .map(f -> Safely.call(f::get))
+                    .forEach(el -> {
+                        enqueue(el);
+                        sufficiency.release();
+                    });
+        } catch (WrappingException e) {
+            e.interruptIfNecessary();
+            close();
+            val msg = "could not fill pool up to minimum size";
+            throw new PoolException(msg, e.getWrappedException());
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -299,7 +314,7 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
                 break;
             }
             try {
-                closeElement(head.value());
+                closeElement(head.rawValue());
             } catch (Exception e) {
                 if (pex == null) {
                     pex = new PoolException("error while trying to close the Whirlpool");

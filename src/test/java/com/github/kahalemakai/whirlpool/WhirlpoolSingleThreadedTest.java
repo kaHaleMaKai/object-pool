@@ -20,7 +20,7 @@ public class WhirlpoolSingleThreadedTest {
             assertEquals(1, pool.totalSize());
         }
         assertEquals(1, pool.availableElements());
-        Thread.sleep(expirationTime);
+        Thread.sleep(expirationTime+10);
         assertEquals(0, pool.availableElements());
     }
 
