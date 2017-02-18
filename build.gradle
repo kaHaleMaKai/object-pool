@@ -3,7 +3,7 @@ plugins {
     id 'build-announcements'
     id 'maven'
     id 'idea'
-    id "io.spring.dependency-management" version "1.0.0.RC2"
+    id "io.spring.dependency-management" version "1.0.0.RELEASE"
     id 'jacoco'
 }
 
@@ -22,14 +22,12 @@ repositories {
 }
 
 dependencyManagement {
-    compile {
-        dependencies {
-            dependencySet(group: "log4j", version: "1.2.17") {
-                entry "log4j"
-                entry "apache-log4j-extras"
-            }
-            dependency 'org.projectlombok:lombok:1.16.12'
+    dependencies {
+        dependencySet(group: "log4j", version: "1.2.17") {
+            entry "log4j"
+            entry "apache-log4j-extras"
         }
+        dependency 'org.projectlombok:lombok:1.16.12'
     }
 }
 
