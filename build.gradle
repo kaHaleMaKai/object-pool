@@ -16,9 +16,8 @@ targetCompatibility = 1.8
 def delombokedDir = "${rootProject.buildDir}/src-delomboked"
 
 repositories {
-    maven { url "file://${System.getProperty("user.home")}/.m2/repository" }
-    maven { url "https://dl.bintray.com/kahalemakai/maven" }
     jcenter()
+    maven { url var("mavenLocal", "file://${System.getProperty("user.home")}/.m2/repository") }
 }
 
 dependencyManagement {
@@ -100,8 +99,8 @@ task cleanTests(group: "verification") {
 task wrapper(type: Wrapper) {
     gradleVersion = '3.3'
 }
-//
-//def var(name, defaultValue=null) {
-//    def val = rootProject.findProperty(name)
-//    return val == null ? defaultValue : val
-//}
+
+def var(name, defaultValue=null) {
+    def val = rootProject.findProperty(name)
+    return val == null ? defaultValue : val
+}
