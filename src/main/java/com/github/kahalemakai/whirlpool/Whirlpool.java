@@ -50,7 +50,8 @@ import java.util.function.Supplier;
 @Log4j
 public final class Whirlpool<T> extends AbstractObjectPool<T> {
 
-    public static final boolean DEFAULT_ASYNC_CLOSE = false;
+    public static final boolean DEFAULT_ASYNC_CREATE = false;
+    public static final boolean DEFAULT_ASYNC_CLOSE = true;
     public static final boolean DEFAULT_ASYNC_UNHAND = false;
     public static final boolean DEFAULT_ASYNC_FILL = true;
     public static final int DEFAULT_MIN_SIZE = 0;
@@ -58,7 +59,6 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
     public static final int DEFAULT_MAX_SIZE = INFINITE_MAX_SIZE;
     public static final long INFINITE_EXPIRATION_TIME = -1L;
     public static final int DEFAULT_PARALLELISM = 1;
-    public static final boolean DEFAULT_ASYNC_CREATE = false;
     public static final boolean DEFAULT_THREAD_ACCESS_FAIRNESS = true;
 
     private final ReferenceQueue<T> refQueue;
@@ -593,7 +593,16 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
         private boolean asyncCreate = DEFAULT_ASYNC_CREATE;
         private int parallelism = DEFAULT_PARALLELISM;
 
-        WhirlpoolBuilder() {
+        WhirlpoolBuilder() { }
+
+        /**
+         * If called, objects in the pool will not expire, ever.
+         * @return
+         *     {@code this WhirlpoolBuilder} instance
+         */
+        public WhirlpoolBuilder<T> withoutExpiration() {
+            expirationTime = INFINITE_EXPIRATION_TIME;
+            return this;
         }
 
         public Whirlpool<T> build() {
@@ -645,11 +654,9 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
                 log.error(msg);
                 throw new IllegalArgumentException(msg);
             }
-            if (parallelism == 0 && expirationTime != INFINITE_EXPIRATION_TIME) {
-                // automatically employ a bg thread for eviction
-                parallelism = 1;
-            }
-            if (parallelism == 0 && (asyncCreate || asyncUnhand || asyncClose || asyncFill)) {
+            if (parallelism == 0
+                    && (expirationTime != INFINITE_EXPIRATION_TIME
+                        || asyncCreate || asyncUnhand || asyncClose || asyncFill)) {
                 val msg = "argument mismatch. demanding async work, but setting parallelism to 0";
                 log.error(msg);
                 throw new IllegalArgumentException(msg);

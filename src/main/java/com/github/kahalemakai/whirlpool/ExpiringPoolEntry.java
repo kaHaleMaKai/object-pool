@@ -7,7 +7,7 @@ import lombok.val;
 import java.lang.ref.WeakReference;
 import java.util.concurrent.ScheduledFuture;
 
-public class ExpiringPoolEntry<T> extends NonExpiringPoolEntry<T> {
+class ExpiringPoolEntry<T> extends NonExpiringPoolEntry<T> {
 
     @Accessors(fluent = true) @Getter
     private final long expirationTimestamp;
@@ -19,6 +19,10 @@ public class ExpiringPoolEntry<T> extends NonExpiringPoolEntry<T> {
         this.taskRef = pool.scheduleEviction(this);
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public void cancelEviction() {
         val task = taskRef.get();
         if (task == null) {

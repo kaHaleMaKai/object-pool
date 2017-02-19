@@ -20,16 +20,25 @@ class NonExpiringPoolEntry<T> implements PoolEntry<T> {
         this.pool = pool;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean tryMarkAsUsed() {
         return inUse.compareAndSet(false, true);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int hashCode() {
         return value.hashCode();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean equals(Object obj) {
         if (this == obj) {
@@ -44,6 +53,9 @@ class NonExpiringPoolEntry<T> implements PoolEntry<T> {
         return value == ((ExpiringPoolEntry) obj).rawValue();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void evict() {
         try {
@@ -53,6 +65,9 @@ class NonExpiringPoolEntry<T> implements PoolEntry<T> {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public T value() {
         if (tryMarkAsUsed()) {
@@ -61,12 +76,16 @@ class NonExpiringPoolEntry<T> implements PoolEntry<T> {
         return pool.createElement();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public T rawValue() {
         return value;
     }
 
     /**
+     * {@inheritDoc}
      * It will not expire, ever.
      */
     @Override
@@ -75,7 +94,7 @@ class NonExpiringPoolEntry<T> implements PoolEntry<T> {
     }
 
     /**
-     * Eviction will never occur, no need to cancel it.
+     * {@inheritDoc}
      */
     @Override
     public void cancelEviction() { }
