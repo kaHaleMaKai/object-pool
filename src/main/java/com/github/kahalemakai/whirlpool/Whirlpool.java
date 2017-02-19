@@ -114,7 +114,15 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
                 onClose,
                 onPrepare,
                 onReset);
-        checkSizeArguments(minSize, maxSize);
+        validateInput(expirationTime,
+                onCreate,
+                minSize,
+                maxSize,
+                asyncClose,
+                asyncUnhand,
+                asyncFill,
+                asyncCreate,
+                parallelism);
         refQueue = new ReferenceQueue<>();
         tracker = new WeakHashMap<>();
         queue = new ConcurrentLinkedDeque<>();
@@ -559,15 +567,49 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
     *                private static method                *
     * *****************************************************/
 
-    private static void checkSizeArguments(int minSize, int maxSize) throws IllegalArgumentException {
-        // sanitize inputs
-        if (minSize < 0) {
-            val msg = String.format("wrong minSize. expected: minSize >= 0, got: %d", minSize);
+    private static <S> void validateInput(final long expirationTime,
+                                          final Supplier<S> onCreate,
+                                          int minSize,
+                                          int maxSize,
+                                          boolean asyncClose,
+                                          boolean asyncUnhand,
+                                          boolean asyncFill,
+                                          boolean asyncCreate,
+                                          int parallelism) {
+        if (onCreate == null) {
+            val msg = "onCreate() must be defined";
             log.error(msg);
             throw new IllegalArgumentException(msg);
         }
-        if (0 < maxSize && maxSize < minSize) {
+        if (minSize < 0) {
+            val msg = "wrong pool size given. expected: minSize >= 0, got: " + minSize;
+            log.error(msg);
+            throw new IllegalArgumentException(msg);
+        }
+        if (maxSize <=0 && maxSize != DEFAULT_MAX_SIZE) {
+            val msg = "wrong pool size given. expected: maxSize > 0, got: " + maxSize;
+            log.error(msg);
+            throw new IllegalArgumentException(msg);
+        }
+        else if (0 < maxSize && maxSize < minSize) {
             val msg = "wrong pool size. expected: minSize <= maxSize, got: minSize > maxSize";
+            log.error(msg);
+            throw new IllegalArgumentException(msg);
+        }
+        if (expirationTime <= 0 && expirationTime != INFINITE_EXPIRATION_TIME) {
+            val msg = "wrong expiration time given. expected: expirationTime > 0, got: " + expirationTime;
+            log.error(msg);
+            throw new IllegalArgumentException(msg);
+        }
+        if (parallelism < 0) {
+            val msg = "wrong parallelism given. expected: parallelism >= 0, got: " + expirationTime;
+            log.error(msg);
+            throw new IllegalArgumentException(msg);
+        }
+        if (parallelism == 0
+                && (expirationTime != INFINITE_EXPIRATION_TIME
+                || asyncCreate || asyncUnhand || asyncClose || asyncFill)) {
+            val msg = "argument mismatch. demanding async work, but setting parallelism to 0";
             log.error(msg);
             throw new IllegalArgumentException(msg);
         }
@@ -606,61 +648,6 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
         }
 
         public Whirlpool<T> build() {
-            if (onCreate() == null) {
-                val msg = "onCreate() must be defined";
-                log.error(msg);
-                throw new IllegalArgumentException(msg);
-            }
-            if (onPrepare == null) {
-                @SuppressWarnings("unchecked")
-                val c = (Consumer<T>) NO_OP_CONSUMER;
-                onPrepare = c;
-            }
-            if (onReset == null) {
-                @SuppressWarnings("unchecked")
-                val c = (Consumer<T>) NO_OP_CONSUMER;
-                onReset = c;
-            }
-            if (onClose == null) {
-                @SuppressWarnings("unchecked")
-                val c = (Consumer<T>) NO_OP_CONSUMER;
-                onClose = c;
-            }
-            if (minSize < 0) {
-                val msg = "wrong pool size given. expected: minSize >= 0, got: " + minSize;
-                log.error(msg);
-                throw new IllegalArgumentException(msg);
-            }
-            if (maxSize == 0) {
-                val msg = "wrong pool size given. expected: maxSize > 0, got: " + maxSize;
-                log.error(msg);
-                throw new IllegalArgumentException(msg);
-            }
-            else if (maxSize < 0) {
-                maxSize = DEFAULT_MAX_SIZE;
-            }
-            else if (0 < maxSize && maxSize < minSize) {
-                val msg = "wrong pool size. expected: minSize <= maxSize, got: minSize > maxSize";
-                log.error(msg);
-                throw new IllegalArgumentException(msg);
-            }
-            if (expirationTime <= 0 && expirationTime != INFINITE_EXPIRATION_TIME) {
-                val msg = "wrong expiration time given. expected: expirationTime > 0, got: " + expirationTime;
-                log.error(msg);
-                throw new IllegalArgumentException(msg);
-            }
-            if (parallelism < 0) {
-                val msg = "wrong parallelism given. expected: parallelism >= 0, got: " + expirationTime;
-                log.error(msg);
-                throw new IllegalArgumentException(msg);
-            }
-            if (parallelism == 0
-                    && (expirationTime != INFINITE_EXPIRATION_TIME
-                        || asyncCreate || asyncUnhand || asyncClose || asyncFill)) {
-                val msg = "argument mismatch. demanding async work, but setting parallelism to 0";
-                log.error(msg);
-                throw new IllegalArgumentException(msg);
-            }
             return new Whirlpool<>(
                     expirationTime,
                     onCreate,
@@ -677,5 +664,6 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
                     asyncCreate,
                     parallelism);
         }
+
     }
 }
