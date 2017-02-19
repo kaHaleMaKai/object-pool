@@ -16,11 +16,6 @@ abstract class AbstractObjectPool<T> implements Poolable<T> {
 
     private static final long SECOND = 1000;
 
-    public static final boolean DEFAULT_ASYNC_CLOSE = false;
-    public static final boolean DEFAULT_ASYNC_UNHAND = false;
-    public static final boolean DEFAULT_ASYNC_FILL = true;
-    public static final int DEFAULT_MIN_SIZE = 0;
-    public static final int DEFAULT_MAX_SIZE = -1;
     public static final long DEFAULT_EXPIRATION_TIME = 30 * SECOND;
 
     protected static final Supplier<?> DEFAULT_CREATE_FN;

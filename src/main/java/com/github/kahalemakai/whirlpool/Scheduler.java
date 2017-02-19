@@ -19,6 +19,9 @@ public class Scheduler {
     }
 
     public static Scheduler ofThreads(int parallelism) {
+        if (parallelism == 0) {
+            return new NoOpScheduler();
+        }
         return new Scheduler(parallelism);
     }
 
@@ -126,5 +129,87 @@ public class Scheduler {
         }
 
     }
+
+    private static class NoOpScheduler extends Scheduler {
+        public NoOpScheduler() {
+            super(0);
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleEviction(PoolEntry<?> entry, long delay) {
+            return (ScheduledNoOpFuture<?>) () -> null;
+        }
+
+        @Override
+        public <T> Future<T> createElement(CreateElementTask<T> task) {
+            return (NoOpFuture<T>) task::createElement;
+        }
+
+        @Override
+        public Future<?> submit(Runnable r) {
+            return (NoOpFuture<?>) () -> {
+                r.run();
+                return null;
+            };
+        }
+
+        @Override
+        public void repeatedly(Runnable r, long intervalInMilliSeconds) {
+            throw new UnsupportedOperationException("cannot schedule job repeatedly on a single thread");
+        }
+
+        @Override
+        public Future<?> closeElement(CloseElementTask task) {
+            return (NoOpFuture<?>) () -> {
+                task.run();
+                return null;
+            };
+        }
+
+        @Override
+        public <T> List<Future<T>> createElements(CreateElementTask<T> task, int count) {
+            return Stream.iterate(task, t -> t)
+                    .map(t -> (NoOpFuture<T>) t::createElement)
+                    .limit(count)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @FunctionalInterface
+    private interface NoOpFuture<T> extends Future<T> {
+        @Override
+        default boolean cancel(boolean mayInterruptIfRunning) {
+            return false;
+        }
+
+        @Override
+        default boolean isCancelled() {
+            return false;
+        }
+
+        @Override
+        default boolean isDone() {
+            return true;
+        }
+
+        @Override
+        default T get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
+            return get();
+        }
+    }
+
+    @FunctionalInterface
+    private interface ScheduledNoOpFuture<T> extends NoOpFuture<T>, ScheduledFuture<T> {
+        @Override
+        default long getDelay(TimeUnit unit) {
+            return 0;
+        }
+
+        @Override
+        default int compareTo(Delayed o) {
+            return 0;
+        }
+    }
+
 
 }
