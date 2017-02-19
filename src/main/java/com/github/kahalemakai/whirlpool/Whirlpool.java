@@ -2,12 +2,9 @@ package com.github.kahalemakai.whirlpool;
 
 import com.github.kahalemakai.safely.Safely;
 import com.github.kahalemakai.safely.WrappingException;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
+import lombok.*;
 import lombok.experimental.Accessors;
 import lombok.extern.log4j.Log4j;
-import lombok.val;
 
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
@@ -187,10 +184,6 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
     @SuppressWarnings("unchecked")
     public Whirlpool(final long expirationTime) {
         this(expirationTime, (Supplier<T>) DEFAULT_CREATE_FN);
-    }
-
-    public Whirlpool() {
-        this(DEFAULT_EXPIRATION_TIME);
     }
 
     public static <T> WhirlpoolBuilder<T> builder() {
@@ -579,39 +572,39 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
         if (onCreate == null) {
             val msg = "onCreate() must be defined";
             log.error(msg);
-            throw new IllegalArgumentException(msg);
+            throw new IllegalStateException(msg);
         }
         if (minSize < 0) {
             val msg = "wrong pool size given. expected: minSize >= 0, got: " + minSize;
             log.error(msg);
-            throw new IllegalArgumentException(msg);
+            throw new IllegalStateException(msg);
         }
         if (maxSize <=0 && maxSize != DEFAULT_MAX_SIZE) {
             val msg = "wrong pool size given. expected: maxSize > 0, got: " + maxSize;
             log.error(msg);
-            throw new IllegalArgumentException(msg);
+            throw new IllegalStateException(msg);
         }
         else if (0 < maxSize && maxSize < minSize) {
             val msg = "wrong pool size. expected: minSize <= maxSize, got: minSize > maxSize";
             log.error(msg);
-            throw new IllegalArgumentException(msg);
+            throw new IllegalStateException(msg);
         }
         if (expirationTime <= 0 && expirationTime != INFINITE_EXPIRATION_TIME) {
             val msg = "wrong expiration time given. expected: expirationTime > 0, got: " + expirationTime;
             log.error(msg);
-            throw new IllegalArgumentException(msg);
+            throw new IllegalStateException(msg);
         }
         if (parallelism < 0) {
             val msg = "wrong parallelism given. expected: parallelism >= 0, got: " + expirationTime;
             log.error(msg);
-            throw new IllegalArgumentException(msg);
+            throw new IllegalStateException(msg);
         }
         if (parallelism == 0
                 && (expirationTime != INFINITE_EXPIRATION_TIME
                 || asyncCreate || asyncUnhand || asyncClose || asyncFill)) {
             val msg = "argument mismatch. demanding async work, but setting parallelism to 0";
             log.error(msg);
-            throw new IllegalArgumentException(msg);
+            throw new IllegalStateException(msg);
         }
     }
 
@@ -621,11 +614,11 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
     @Log4j
     public static class WhirlpoolBuilder<T> {
         private long expirationTime;
-        private Supplier<T> onCreate;
-        private Predicate<T> onValidation;
-        private Consumer<T> onClose;
-        private Consumer<T> onPrepare;
-        private Consumer<T> onReset;
+        private @NonNull Supplier<T> onCreate;
+        private @NonNull Predicate<T> onValidation;
+        private @NonNull Consumer<T> onClose;
+        private @NonNull Consumer<T> onPrepare;
+        private @NonNull Consumer<T> onReset;
         private boolean fairThreadAccess = DEFAULT_THREAD_ACCESS_FAIRNESS;
         private int minSize = DEFAULT_MIN_SIZE;
         private int maxSize = DEFAULT_MAX_SIZE;

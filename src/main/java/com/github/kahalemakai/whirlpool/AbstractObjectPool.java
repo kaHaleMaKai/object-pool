@@ -14,23 +14,19 @@ import java.util.function.Supplier;
 @Log4j
 abstract class AbstractObjectPool<T> implements Poolable<T> {
 
-    private static final long SECOND = 1000;
-
-    public static final long DEFAULT_EXPIRATION_TIME = 30 * SECOND;
-
-    protected static final Supplier<?> DEFAULT_CREATE_FN;
+    static final Supplier<?> DEFAULT_CREATE_FN;
     static {
         DEFAULT_CREATE_FN = () -> {
             throw new UnsupportedOperationException("missing Supplier to create elements");
         };
     }
 
-    protected static final Predicate<?> DEFAULT_VALIDATION_FN;
+    static final Predicate<?> DEFAULT_VALIDATION_FN;
     static {
         DEFAULT_VALIDATION_FN = (t) -> true;
     }
 
-    protected static final Consumer<?> NO_OP_CONSUMER;
+    static final Consumer<?> NO_OP_CONSUMER;
     static {
         NO_OP_CONSUMER = (t) -> { };
     }

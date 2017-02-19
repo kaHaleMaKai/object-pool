@@ -28,6 +28,9 @@ import java.util.function.Supplier;
 @Log4j
 public final class ObjectPool<T> extends AbstractObjectPool<T> {
 
+    private static final long SECOND = 1000;
+    public static final long DEFAULT_EXPIRATION_TIME = 30 * SECOND;
+
     private static final com.github.kahalemakai.whirlpool.eviction.EvictionScheduler EVICTION_SCHEDULER;
     static {
         EVICTION_SCHEDULER = com.github.kahalemakai.whirlpool.eviction.EvictionScheduler.init();
