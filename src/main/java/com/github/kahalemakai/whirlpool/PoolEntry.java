@@ -1,6 +1,7 @@
 package com.github.kahalemakai.whirlpool;
 
 interface PoolEntry<T> {
+
     boolean tryMarkAsUsed();
 
     void evict();
