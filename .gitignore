@@ -50,6 +50,7 @@ Temporary Items
 hs_err_pid*
 .gradle
 /build/
+/projects/*/build/
 gradle-app.setting
 !gradle-wrapper.jar
 .gradletasknamecache

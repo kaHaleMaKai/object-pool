@@ -22,15 +22,22 @@ allprojects {
             dependency 'org.projectlombok:lombok:1.16.12'
         }
     }
+
+    tasks.withType(JavaCompile) {
+        options.compilerArgs <<
+                "-Xlint:unchecked" <<
+                "-Xlint:deprecation" <<
+                "-Xdiags:verbose"
+        options.incremental = true // one flag, and things will get MUCH faster
+    }
 }
 
 subprojects {
+
     apply plugin: 'java'
 
     version '0.1.0'
     group = 'com.github.kahalemakai'
-
-    apply plugin: 'java'
 
     sourceCompatibility = 1.8
     targetCompatibility = 1.8
@@ -40,33 +47,21 @@ subprojects {
         maven { url var("mavenLocal", "file://${System.getProperty("user.home")}/.m2/repository") }
     }
 
-task delombok {
-    doLast {
-        description 'Delomboks the source code'
-        ant.taskdef(classname: 'lombok.delombok.ant.Tasks$Delombok', classpath: configurations.lombok.asPath, name: 'delombok')
-        ant.mkdir(dir: delombokedDir)
-        ant.delombok(verbose: 'true', encoding: 'UTF-8', to: delombokedDir, from: 'src/main/java')
+    configurations {
+        apt
     }
-}
 
     dependencies {
         testCompile group: 'junit', name: 'junit', version: '4.12'
         testCompileOnly 'org.projectlombok:lombok'
+        apt 'org.projectlombok:lombok'
     }
-
 
     configurations.compile.transitive = true
 
-    gradle.projectsEvaluated {
-        tasks.withType(JavaCompile) {
-            options.compilerArgs <<
-                    "-Xlint:unchecked" <<
-                    "-Xlint:deprecation" <<
-                    "-Xdiags:verbose"
-            options.annotationProcessorPath = configurations.apt
-        }
+    tasks.withType(JavaCompile) {
+        options.annotationProcessorPath = configurations.apt
     }
-}
 
     task cleanTests(group: "verification") {
         dependsOn project.cleanTest
@@ -74,6 +69,6 @@ task delombok {
 }
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '3.3'
+    gradleVersion = '3.4'
 }
 

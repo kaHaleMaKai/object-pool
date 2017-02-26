@@ -1,3 +1,4 @@
+apply plugin: 'java-library'
 apply plugin: 'maven'
 apply plugin: 'jacoco'
 
@@ -7,15 +8,15 @@ configurations {
     lombok
     lombok.extendsFrom(configurations.compile)
     dependencies {
-        compile 'org.projectlombok:lombok'
+        implementation 'org.projectlombok:lombok'
     }
 }
 
 dependencies {
     compileOnly 'org.projectlombok:lombok'
-    compile 'log4j:log4j'
-    compile 'log4j:apache-log4j-extras'
-    compile 'com.github.kahalemakai:safely:1.0.0-RC1'
+    implementation 'log4j:log4j'
+    implementation 'log4j:apache-log4j-extras'
+    implementation 'com.github.kahalemakai:safely:1.0.0-RC1'
 }
 
 task delombok {
