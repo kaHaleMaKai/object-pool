@@ -1,0 +1,55 @@
+apply plugin: 'maven'
+apply plugin: 'jacoco'
+
+def delombokedDir = "${project.buildDir}/src-delomboked"
+
+configurations {
+    lombok
+    lombok.extendsFrom(configurations.compile)
+    dependencies {
+        compile 'org.projectlombok:lombok'
+    }
+}
+
+dependencies {
+    compileOnly 'org.projectlombok:lombok'
+    compile 'log4j:log4j'
+    compile 'log4j:apache-log4j-extras'
+    compile 'com.github.kahalemakai:safely:1.0.0-RC1'
+}
+
+task delombok {
+    doLast {
+        description 'Delomboks the source code'
+        ant.taskdef(classname: 'lombok.delombok.ant.Tasks$Delombok', classpath: configurations.lombok.asPath, name: 'delombok')
+        ant.mkdir(dir: delombokedDir)
+        ant.delombok(verbose: 'true', encoding: 'UTF-8', to: delombokedDir, from: 'src/main/java')
+    }
+}
+
+task javadoc(type: Javadoc, group: "documentation", overwrite: true) {
+    dependsOn delombok
+    source delombokedDir
+}
+
+task javadocJar(type: Jar) {
+    dependsOn javadoc
+    classifier = 'javadoc'
+    from javadoc
+}
+
+task sourcesJar(type: Jar) {
+    dependsOn classes
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+jacocoTestReport {
+    dependsOn delombok
+    additionalSourceDirs = files(delombokedDir)
+    reports {
+        xml.enabled true
+    }
+}
+
+

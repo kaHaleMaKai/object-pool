@@ -1,62 +1,44 @@
 plugins {
-    id 'java'
     id 'build-announcements'
-    id 'maven'
     id 'idea'
-    id "io.spring.dependency-management" version "1.0.0.RELEASE"
-    id 'jacoco'
+    id "io.spring.dependency-management" version "1.0.0.RELEASE" apply false
 }
 
-version '0.1.0'
-group = 'com.github.kahalemakai'
+allprojects {
 
-sourceCompatibility = 1.8
-targetCompatibility = 1.8
+    ext.var = { String name, defaultValue=null ->
+        def val = rootProject.findProperty(name)
+        return val == null ? defaultValue : val
+    }
 
-def delombokedDir = "${rootProject.buildDir}/src-delomboked"
+    apply plugin: "io.spring.dependency-management"
 
-repositories {
-    jcenter()
-    maven { url var("mavenLocal", "file://${System.getProperty("user.home")}/.m2/repository") }
-}
-
-dependencyManagement {
-    dependencies {
-        dependencySet(group: "log4j", version: "1.2.17") {
-            entry "log4j"
-            entry "apache-log4j-extras"
+    dependencyManagement {
+        dependencies {
+            dependencySet(group: "log4j", version: "1.2.17") {
+                entry "log4j"
+                entry "apache-log4j-extras"
+            }
+            dependency 'org.projectlombok:lombok:1.16.12'
         }
-        dependency 'org.projectlombok:lombok:1.16.12'
     }
 }
 
-dependencies {
-    compileOnly 'org.projectlombok:lombok'
-    compile 'log4j:log4j'
-    compile 'log4j:apache-log4j-extras'
-    compile 'com.github.kahalemakai:safely:1.0.0-RC1'
-    testCompile group: 'junit', name: 'junit', version: '4.12'
-    testCompile 'org.projectlombok:lombok'
-}
+subprojects {
+    apply plugin: 'java'
 
-configurations {
-    lombok
-    lombok.extendsFrom(configurations.compile)
-    dependencies {
-        compile 'org.projectlombok:lombok'
+    version '0.1.0'
+    group = 'com.github.kahalemakai'
+
+    apply plugin: 'java'
+
+    sourceCompatibility = 1.8
+    targetCompatibility = 1.8
+
+    repositories {
+        jcenter()
+        maven { url var("mavenLocal", "file://${System.getProperty("user.home")}/.m2/repository") }
     }
-}
-
-configurations.compile.transitive = true
-
-gradle.projectsEvaluated {
-    tasks.withType(JavaCompile) {
-        options.compilerArgs <<
-                "-Xlint:unchecked" <<
-                "-Xlint:deprecation" <<
-                "-Xdiags:verbose"
-    }
-}
 
 task delombok {
     doLast {
@@ -67,40 +49,31 @@ task delombok {
     }
 }
 
-task javadoc(type: Javadoc, group: "documentation", overwrite: true) {
-    dependsOn delombok
-    source delombokedDir
-}
+    dependencies {
+        testCompile group: 'junit', name: 'junit', version: '4.12'
+        testCompileOnly 'org.projectlombok:lombok'
+    }
 
-task javadocJar(type: Jar) {
-    dependsOn javadoc
-    classifier = 'javadoc'
-    from javadoc
-}
 
-task sourcesJar(type: Jar) {
-    dependsOn classes
-    classifier = 'sources'
-    from sourceSets.main.allSource
-}
+    configurations.compile.transitive = true
 
-jacocoTestReport {
-  dependsOn delombok
-    additionalSourceDirs = files(delombokedDir)
-    reports {
-      xml.enabled true
+    gradle.projectsEvaluated {
+        tasks.withType(JavaCompile) {
+            options.compilerArgs <<
+                    "-Xlint:unchecked" <<
+                    "-Xlint:deprecation" <<
+                    "-Xdiags:verbose"
+            options.annotationProcessorPath = configurations.apt
+        }
     }
 }
 
-task cleanTests(group: "verification") {
-    dependsOn project.cleanTest
+    task cleanTests(group: "verification") {
+        dependsOn project.cleanTest
+    }
 }
 
 task wrapper(type: Wrapper) {
     gradleVersion = '3.3'
 }
 
-def var(name, defaultValue=null) {
-    def val = rootProject.findProperty(name)
-    return val == null ? defaultValue : val
-}

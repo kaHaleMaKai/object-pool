@@ -1,1 +1,3 @@
 rootProject.name = 'whirlpool'
+
+include 'projects/whirlpool', 'projects/whirlpool-benchmark'
