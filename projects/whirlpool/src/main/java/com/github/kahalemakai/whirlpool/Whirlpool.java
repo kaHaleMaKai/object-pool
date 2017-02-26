@@ -260,16 +260,17 @@ public final class Whirlpool<T> extends AbstractObjectPool<T> {
     }
 
     private void unhandElement(T element) {
-        sufficiency.release();
+        necessity.release();
         if (asyncUnhand) {
             scheduler.submit(() -> {
                 enqueue(element);
+                sufficiency.release();
                 necessity.release();
             });
             return;
         }
         enqueue(element);
-        necessity.release();
+        sufficiency.release();
     }
 
     /**
