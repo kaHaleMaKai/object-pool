@@ -9,8 +9,11 @@ import java.util.concurrent.CountDownLatch;
 
 public class WhirlpoolThroughputTest {
 
-    private int numThreads = 1;
-    private int cycles = 1000;
+    private int numSlowThreads = 5;
+    private int slowCycles = 500;
+
+    private int numFastThreads = 25;
+    private int fastCycles = 10_000_000;
 
     @Test
     public void commonsPool() throws Exception {
@@ -19,15 +22,15 @@ public class WhirlpoolThroughputTest {
         pool.setTestOnReturn(true);
         val threads = new ArrayList<Thread>();
         val startSignal = new CountDownLatch(1);
-        val stopSignal = new CountDownLatch(numThreads);
-        for (int i = 0; i < numThreads; ++i) {
+        val stopSignal = new CountDownLatch(numSlowThreads);
+        for (int i = 0; i < numSlowThreads; ++i) {
             val t = new Thread(() -> {
                 try {
                     startSignal.await();
                 } catch (InterruptedException e) {
                     throw new NullPointerException();
                 }
-                for (int j = 0; j < cycles; ++j) {
+                for (int j = 0; j < slowCycles; ++j) {
                     try {
                         pool.returnObject(pool.borrowObject());
                     } catch (Exception e) {
@@ -65,15 +68,15 @@ public class WhirlpoolThroughputTest {
                 .build();
         val threads = new ArrayList<Thread>();
         val startSignal = new CountDownLatch(1);
-        val stopSignal = new CountDownLatch(numThreads);
-        for (int i = 0; i < numThreads; ++i) {
+        val stopSignal = new CountDownLatch(numSlowThreads);
+        for (int i = 0; i < numSlowThreads; ++i) {
             val t = new Thread(() -> {
                 try {
                     startSignal.await();
                 } catch (InterruptedException e) {
                     throw new NullPointerException();
                 }
-                for (int j = 0; j < cycles; ++j) {
+                for (int j = 0; j < slowCycles; ++j) {
                     pool.unhand(pool.borrow());
                     Thread.yield();
                 }
@@ -88,6 +91,96 @@ public class WhirlpoolThroughputTest {
         val end = System.currentTimeMillis();
         val diff = (end - start);
         System.out.println((diff));
+    }
+
+    @Test
+    public void whirlpoolThroughput() throws Exception {
+        Thread.sleep(5000);
+        val pool = Whirlpool.<Mutator<Long>>builder()
+                .onCreate(() -> new Mutator<>(Thread.currentThread().getId()))
+//                .onValidation(m -> (m.get() + System.currentTimeMillis()) % 5 != 0)
+                .onPrepare(m -> m.set(Thread.currentThread().getId()))
+                .onReset(m -> m.set(0L))
+                .onClose(m -> m.set(-1L))
+                .expirationTime(1000)
+//                .parallelism(1)
+//                .asyncUnhand(false)
+//                .asyncClose(false)
+//                .asyncCreate(false)
+//                .asyncFill(false)
+                .build();
+        val threads = new ArrayList<Thread>();
+        val startSignal = new CountDownLatch(1);
+        val stopSignal = new CountDownLatch(numFastThreads);
+        for (int i = 0; i < numFastThreads; ++i) {
+            val t = new Thread(() -> {
+                try {
+                    startSignal.await();
+                } catch (InterruptedException e) {
+                    throw new NullPointerException();
+                }
+                for (int j = 0; j < fastCycles; ++j) {
+                    pool.unhand(pool.borrow());
+                    Thread.yield();
+                }
+                stopSignal.countDown();
+            });
+            t.start();
+            threads.add(t);
+        }
+        val start = System.currentTimeMillis();
+        startSignal.countDown();
+        stopSignal.await();
+        val end = System.currentTimeMillis();
+        val diff = (end - start);
+        System.out.println("size: " + pool.totalSize());
+        System.out.println((diff));
+        System.out.println(fastCycles * numFastThreads + " ops");
+        System.out.println(fastCycles * numFastThreads / diff + " ops/ms");
+    }
+
+
+    @Test
+    public void commonsPoolThroughput() throws Exception {
+//        Thread.sleep(5000);
+        val pool = new GenericObjectPool<Mutator<Long>>(new MutatorFactory());
+//        pool.setTestOnReturn(true);
+//        pool.setTestOnBorrow(true);
+        pool.setMinEvictableIdleTimeMillis(1000);
+        pool.setTimeBetweenEvictionRunsMillis(1000);
+        val threads = new ArrayList<Thread>();
+        val startSignal = new CountDownLatch(1);
+        val stopSignal = new CountDownLatch(numFastThreads);
+        for (int i = 0; i < numFastThreads; ++i) {
+            val t = new Thread(() -> {
+                try {
+                    startSignal.await();
+                } catch (InterruptedException e) {
+                    throw new NullPointerException();
+                }
+                for (int j = 0; j < fastCycles; ++j) {
+                    try {
+                        pool.returnObject(pool.borrowObject());
+                    } catch (Exception e) {
+                        val ex = new NullPointerException();
+                        ex.initCause(e);
+                        throw ex;
+                    }
+                    Thread.yield();
+                }
+                stopSignal.countDown();
+            });
+            t.start();
+            threads.add(t);
+        }
+        val start = System.currentTimeMillis();
+        startSignal.countDown();
+        stopSignal.await();
+        val end = System.currentTimeMillis();
+        val diff = (end - start);
+        System.out.println((diff));
+        System.out.println(fastCycles * numFastThreads + " ops");
+        System.out.println(fastCycles * numFastThreads / diff + " ops/ms");
     }
 
 }
