@@ -6,14 +6,28 @@ import org.apache.log4j.Logger;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 
 public class MultiThreadedWhirlpoolTest {
+
+    private static final Method TRIGGER_EVICTION;
+    static {
+        Method m = null;
+        try {
+            m = Whirlpool.class.getDeclaredMethod("triggerEviction");
+            m.setAccessible(true);
+        } catch (NoSuchMethodException e) {
+            e.printStackTrace();
+        }
+        TRIGGER_EVICTION = m;
+    }
 
     private Whirlpool<Integer> pool;
     private final long expirationTime = 1000;
@@ -26,7 +40,8 @@ public class MultiThreadedWhirlpoolTest {
         Logger.getLogger(Whirlpool.class).setLevel(Level.INFO);
         pool.unhand(pool.borrow());
         assertEquals(1, pool.totalSize());
-        Thread.sleep(expirationTime + 10);
+        TRIGGER_EVICTION.invoke(pool);
+        Thread.sleep(2 * expirationTime);
         assertEquals(0, pool.totalSize());
         val list = new ArrayList<Integer>();
         for (int i = 0; i < cycles; ++i) {
@@ -36,35 +51,42 @@ public class MultiThreadedWhirlpoolTest {
             pool.unhand(list.remove(0));
         }
         assertEquals(cycles, pool.availableElements());
+        TRIGGER_EVICTION.invoke(pool);
         Thread.sleep(expirationTime * 2);
         assertEquals(0, pool.availableElements());
     }
 
     @Test
     public void borrowing() throws Exception {
+        Logger.getLogger(Whirlpool.class).setLevel(Level.INFO);
+        Logger.getLogger(AbstractObjectPool.class).setLevel(Level.INFO);
+        Logger.getLogger(AbstractObjectPool.class).setLevel(Level.INFO);
+        Thread.sleep(5000);
         val ints = Collections.newSetFromMap(new ConcurrentHashMap<Integer, Boolean>());
         val threads = new ArrayList<Thread>();
         val numThreads = 4;
-        val numCycles = 1000000;
-        Logger.getLogger(AbstractObjectPool.class).setLevel(Level.INFO);
-        Logger.getLogger(Whirlpool.class).setLevel(Level.INFO);
+        val numCycles = 1_000_000;
+        val startSignal = new CountDownLatch(1);
+        val endSignal = new CountDownLatch(numThreads);
         for (int i = 0; i < numThreads; ++i) {
             val thread = new Thread(() -> {
+                try {
+                    startSignal.await();
+                } catch (InterruptedException e) {
+                    endSignal.countDown();
+                    Thread.currentThread().interrupt();
+                    throw new NullPointerException();
+                }
                 for (int j = 0; j < numCycles; ++j) {
                     ints.add(pool.borrow());
                 }
+                endSignal.countDown();
             });
             threads.add(thread);
             thread.start();
         }
-        while (threads.stream().anyMatch(Thread::isAlive)) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                threads.forEach(Thread::interrupt);
-                throw e;
-            }
-        }
+        startSignal.countDown();
+        endSignal.await();
         assertEquals(numCycles * numThreads, ints.size());
     }
 

@@ -4,6 +4,7 @@ import lombok.val;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 
 import static org.junit.Assert.assertEquals;
@@ -12,6 +13,17 @@ public class WhirlpoolSingleThreadedTest {
     private Whirlpool<Integer> pool;
     private final long expirationTime = 100;
     private volatile int counter;
+    private static final Method TRIGGER_EVICTION;
+    static {
+        Method m = null;
+        try {
+            m = Whirlpool.class.getDeclaredMethod("triggerEviction");
+            m.setAccessible(true);
+        } catch (NoSuchMethodException e) {
+            e.printStackTrace();
+        }
+        TRIGGER_EVICTION = m;
+    }
 
     @Test
     public void autoClosing() throws Exception {
@@ -20,7 +32,8 @@ public class WhirlpoolSingleThreadedTest {
             assertEquals(1, pool.totalSize());
         }
         assertEquals(1, pool.availableElements());
-        Thread.sleep(expirationTime+10);
+        TRIGGER_EVICTION.invoke(pool);
+        Thread.sleep(2 * expirationTime);
         assertEquals(0, pool.availableElements());
     }
 
@@ -28,11 +41,12 @@ public class WhirlpoolSingleThreadedTest {
     public void evict() throws Exception {
         val borrowed = pool.borrow();
         assertEquals(Integer.valueOf(1), Integer.valueOf(pool.totalSize()));
-        Thread.sleep(expirationTime);
+        Thread.sleep(2 * expirationTime);
         assertEquals(Integer.valueOf(1), Integer.valueOf(pool.totalSize()));
         pool.unhand(borrowed);
         assertEquals(Integer.valueOf(1), Integer.valueOf(pool.totalSize()));
-        Thread.sleep(expirationTime);
+        TRIGGER_EVICTION.invoke(pool);
+        Thread.sleep(2 * expirationTime);
         assertEquals(Integer.valueOf(0), Integer.valueOf(pool.totalSize()));
         assertEquals(borrowed, pool.borrow());
     }
@@ -42,12 +56,13 @@ public class WhirlpoolSingleThreadedTest {
         val borrowed = pool.borrow();
         val borrowed2 = pool.borrow();
         assertEquals(Integer.valueOf(2), Integer.valueOf(pool.totalSize()));
-        Thread.sleep(expirationTime);
+        Thread.sleep(2 * expirationTime);
         assertEquals(Integer.valueOf(2), Integer.valueOf(pool.totalSize()));
         pool.unhand(borrowed);
         pool.unhand(borrowed2);
         assertEquals(Integer.valueOf(2), Integer.valueOf(pool.totalSize()));
-        Thread.sleep(expirationTime + 1);
+        TRIGGER_EVICTION.invoke(pool);
+        Thread.sleep(2 * expirationTime);
         assertEquals(Integer.valueOf(0), Integer.valueOf(pool.totalSize()));
         assertEquals(borrowed, pool.borrow());
         assertEquals(borrowed2, pool.borrow());
