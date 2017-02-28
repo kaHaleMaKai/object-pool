@@ -8,6 +8,8 @@ import java.util.concurrent.locks.ReentrantLock;
 
 class BufferEntry<T> {
 
+    private static final long WAITING_INTERVAL = 50;
+
     private static final Unsafe UNSAFE;
     static {
         UNSAFE = UnsafeManager.getUnsafe();
@@ -38,24 +40,22 @@ class BufferEntry<T> {
 
     public void set(long requestId, T element) throws InterruptedException {
         if (add(requestId, element)) {
-//            signal.signalAll();
             return;
         }
         lock.lock();
         try {
             while (!add(requestId, element)) {
-                signal.await();
+                signal.awaitNanos(WAITING_INTERVAL);
             }
         } finally {
-            lock.unlock();
             signal.signalAll();
+            lock.unlock();
         }
     }
 
     public T get(long requestId, int bufferSize) throws InterruptedException {
         T obj = take(requestId, bufferSize);
         if (obj != null) {
-//            signal.signalAll();
             return obj;
         }
         lock.lock();
@@ -65,12 +65,12 @@ class BufferEntry<T> {
                 if (obj != null) {
                     break;
                 }
-                signal.await();
+                signal.awaitNanos(WAITING_INTERVAL);
             }
             return obj;
         } finally {
-            lock.unlock();
             signal.signalAll();
+            lock.unlock();
         }
     }
 
