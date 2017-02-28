@@ -2,134 +2,58 @@ package com.github.kahalemakai.whirlpool;
 
 import lombok.Getter;
 import lombok.val;
-import sun.misc.Unsafe;
 
-import java.lang.reflect.Array;
-import java.lang.reflect.Field;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class RingBuffer<T> {
 
-    private static final Unsafe UNSAFE;
-    static {
-        UNSAFE = initUnsafe();
-    }
-
-    private static final long HEAD_OFFSET;
-    static {
-        val offset = getHeadOffset();
-        HEAD_OFFSET = offset;
-    }
-
-    private static final int INVALID_INDEX = -1;
-    private static final long LONG_BITS = 0xffffffffL;
-
-    private volatile long headAndTail;
-    private final T[] buffer;
+    private final AtomicLong head, tail;
+    private final BufferEntry<T>[] buffer;
     @Getter
     private final int maxSize;
 
     RingBuffer(Class<? extends T> type, int maxSize) {
         this.maxSize = maxSize;
         @SuppressWarnings("unchecked")
-        val array = (T[]) Array.newInstance(type, this.maxSize);
+        val array = (BufferEntry<T>[]) new BufferEntry<?>[maxSize];
+        for (int i = 0; i < array.length; i++) {
+            array[i] = BufferEntry.ofId(i + 1);
+        }
         this.buffer = array;
-        this.headAndTail = 0L;
+        this.head = new AtomicLong(1);
+        this.tail = new AtomicLong(1);
     }
 
-    public boolean offer(T element) {
-        val idx = getAndIncrementTail();
-        if (idx == INVALID_INDEX) {
-            return false;
+    public void offer(T element) {
+        if (element == null) {
+            throw new IllegalArgumentException("RingBuffer does not accept null elements");
         }
-        buffer[idx] = element;
-        return true;
+        val requestId = tail.getAndIncrement();
+        val idx = (int) ((requestId - 1) % maxSize);
+        try {
+            this.buffer[idx].set(requestId, element);
+        } catch (InterruptedException e) {
+            // TODO some cleanup should be necessary in
+            // TODO the buffer entry, e.g. signaling
+            Thread.currentThread().interrupt();
+        }
     }
 
     public T poll() {
-        val idx = getAndIncrementHead();
-        if (idx == INVALID_INDEX) {
-            return null;
+        val requestId = head.getAndIncrement();
+        val idx = (int) ((requestId - 1) % maxSize);
+        try {
+            return this.buffer[idx].get(requestId, maxSize);
+        } catch (InterruptedException e) {
+            // TODO some cleanup should be necessary in
+            // TODO the buffer entry, e.g. signaling
+            Thread.currentThread().interrupt();
         }
-        val element = buffer[idx];
-        buffer[idx] = null;
-        return element;
+        return null;
     }
 
     public int availableElements() {
-        val address = headAndTail;
-        val h = ((int) (address >>> 32));
-        val t = (int) address;
-        val diff = (t - h + maxSize) % maxSize;
-        if (diff == 0) {
-            return t > h ? maxSize : 0;
-        }
-        return diff;
-    }
-
-    void normalizeHeadAndTail() {
-        int h, t;
-        long prev, next;
-        do {
-            prev = headAndTail;
-            h = ((int) (prev >>> 32)) % maxSize;
-            t = ((int) prev) % maxSize;
-            next = (((long) h) << 32) | (LONG_BITS & t);
-        } while (!UNSAFE.compareAndSwapLong(this, HEAD_OFFSET, prev, next));
-    }
-
-    private int getAndIncrementHead() {
-        int h, t;
-        long prev, next;
-        do {
-            prev = headAndTail;
-            h = ((int) (prev >>> 32));
-            t = (int) prev;
-            if (h == t) {
-                return INVALID_INDEX;
-            }
-            h += 1;
-            next = (((long) h) << 32) | (LONG_BITS & t);
-        } while (!UNSAFE.compareAndSwapLong(this, HEAD_OFFSET, prev, next));
-        return (h - 1) % maxSize;
-    }
-
-    private int getAndIncrementTail() {
-        int h, t;
-        long prev, next;
-        do {
-            prev = headAndTail;
-            h = (int) (prev >>> 32);
-            t = (int) prev;
-            if ((t > h) && (t - h) % maxSize == 0) {
-                return INVALID_INDEX;
-            }
-            next = (((long) h) << 32) | (LONG_BITS & (t + 1));
-        } while (!UNSAFE.compareAndSwapLong(this, HEAD_OFFSET, prev, next));
-        return t % maxSize;
-    }
-
-    private static Unsafe initUnsafe() {
-        Field f = null;
-        try {
-            f = Unsafe.class.getDeclaredField("theUnsafe");
-        } catch (NoSuchFieldException e) {
-            throw new NullPointerException("could not initialize UNSAFE");
-        }
-        f.setAccessible(true);
-        try {
-            return (Unsafe) f.get(null);
-        } catch (IllegalAccessException e) {
-            throw new NullPointerException("could not initialize UNSAFE");
-        }
-    }
-
-    private static long getHeadOffset() {
-        try {
-            return UNSAFE.objectFieldOffset(
-                    RingBuffer.class.getDeclaredField("headAndTail"));
-        } catch (NoSuchFieldException e) {
-            throw new NullPointerException("could not get field offset for headAndTail");
-        }
+        return (int) (tail.get() - head.get());
     }
 
 }
