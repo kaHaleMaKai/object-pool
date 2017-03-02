@@ -1,6 +1,7 @@
 package com.github.kahalemakai.whirlpool;
 
 import lombok.val;
+import sun.misc.Contended;
 import sun.misc.Unsafe;
 
 import java.util.concurrent.locks.Condition;
@@ -25,7 +26,9 @@ class BufferEntry<T> {
         VALUE_OFFSET = UnsafeManager.getOffset(BufferEntry.class, "value");
     }
 
+    @Contended("entry")
     private volatile long id;
+    @Contended("entry")
     private volatile T value;
     private final ReentrantLock lock = new ReentrantLock(true);
     private final Condition signal = lock.newCondition();
