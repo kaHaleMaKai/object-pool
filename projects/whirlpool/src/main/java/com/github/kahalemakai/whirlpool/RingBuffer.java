@@ -2,12 +2,27 @@ package com.github.kahalemakai.whirlpool;
 
 import lombok.Getter;
 import lombok.val;
-
-import java.util.concurrent.atomic.AtomicLong;
+import sun.misc.Contended;
+import sun.misc.Unsafe;
 
 public class RingBuffer<T> {
 
-    private final AtomicLong head, tail;
+    private static final Unsafe UNSAFE;
+    static {
+        UNSAFE = UnsafeManager.getUnsafe();
+    }
+
+    private static final long HEAD_OFFSET, TAIL_OFFSET;
+    static {
+        HEAD_OFFSET = UnsafeManager.getOffset(RingBuffer.class, "head");
+        TAIL_OFFSET = UnsafeManager.getOffset(RingBuffer.class, "tail");
+    }
+
+    @Contended
+    private volatile long head;
+    @Contended
+    private volatile long tail;
+
     private final BufferEntry<T>[] buffer;
     @Getter
     private final int maxSize;
@@ -20,15 +35,15 @@ public class RingBuffer<T> {
             array[i] = BufferEntry.ofId(i + 1);
         }
         this.buffer = array;
-        this.head = new AtomicLong(1);
-        this.tail = new AtomicLong(1);
+        this.head = 1;
+        this.tail = 1;
     }
 
     public void offer(T element) {
         if (element == null) {
             throw new IllegalArgumentException("RingBuffer does not accept null elements");
         }
-        val requestId = tail.getAndIncrement();
+        val requestId = UNSAFE.getAndAddLong(this, TAIL_OFFSET, 1);
         val idx = (int) ((requestId - 1) % maxSize);
         try {
             this.buffer[idx].set(requestId, element);
@@ -40,7 +55,7 @@ public class RingBuffer<T> {
     }
 
     public T poll() {
-        val requestId = head.getAndIncrement();
+        val requestId = UNSAFE.getAndAddLong(this, HEAD_OFFSET, 1);
         val idx = (int) ((requestId - 1) % maxSize);
         try {
             return this.buffer[idx].get(requestId, maxSize);
@@ -53,7 +68,7 @@ public class RingBuffer<T> {
     }
 
     public int availableElements() {
-        return (int) (tail.get() - head.get());
+        return (int) (tail - head);
     }
 
 }
