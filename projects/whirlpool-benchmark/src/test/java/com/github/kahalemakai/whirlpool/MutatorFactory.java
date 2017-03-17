@@ -18,7 +18,7 @@ public class MutatorFactory implements PooledObjectFactory<Mutator<Long>> {
     @Override
     public boolean validateObject(PooledObject<Mutator<Long>> p) {
         return true;
-//        return (p.getObject().get() + System.currentTimeMillis()) % 5 != 0;
+//        return (p.getObject().blockAndGet() + System.currentTimeMillis()) % 5 != 0;
     }
 
     @Override

@@ -98,7 +98,7 @@ public class WhirlpoolThroughputTest {
         Thread.sleep(5000);
         val pool = Whirlpool.<Mutator<Long>>builder()
                 .onCreate(() -> new Mutator<>(Thread.currentThread().getId()))
-//                .onValidation(m -> (m.get() + System.currentTimeMillis()) % 5 != 0)
+//                .onValidation(m -> (m.blockAndGet() + System.currentTimeMillis()) % 5 != 0)
                 .onPrepare(m -> m.set(Thread.currentThread().getId()))
                 .onReset(m -> m.set(0L))
                 .onClose(m -> m.set(-1L))

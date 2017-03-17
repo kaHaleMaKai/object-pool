@@ -67,7 +67,7 @@ public class BufferEntryTest {
         val producerSignal = new CountDownLatch(1);
         val consumer = new Thread(() -> {
             try {
-                val v = entry.get(requestId, bufferSize);
+                val v = entry.blockAndGet(requestId, bufferSize);
                 assertEquals(newValue, (int) v);
             } catch (InterruptedException e) {
                 throw new AssertionError("could not consume", e);
@@ -78,7 +78,7 @@ public class BufferEntryTest {
         val producer = new Thread(() -> {
             try {
                 Thread.sleep(sleepingTime);
-                entry.set(requestId, newValue);
+                entry.blockAndSet(requestId, newValue);
             } catch (InterruptedException e) {
                 throw new AssertionError("could not produce", e);
             } finally {
@@ -109,7 +109,7 @@ public class BufferEntryTest {
         val consumer = new Thread(() -> {
             try {
                 Thread.sleep(sleepingTime);
-                val v = entry.get(requestId, bufferSize);
+                val v = entry.blockAndGet(requestId, bufferSize);
                 assertEquals(newValue, (int) v);
             } catch (InterruptedException e) {
                 throw new AssertionError("could not consume", e);
@@ -119,7 +119,7 @@ public class BufferEntryTest {
         });
         val producer = new Thread(() -> {
             try {
-                entry.set(requestId + bufferSize, finalValue);
+                entry.blockAndSet(requestId + bufferSize, finalValue);
             } catch (InterruptedException e) {
                 throw new AssertionError("could not produce", e);
             } finally {
@@ -142,8 +142,8 @@ public class BufferEntryTest {
     public void setUp() throws Exception {
         idField = BufferEntry.class.getDeclaredField("id");
         valueField = BufferEntry.class.getDeclaredField("value");
-        mAdd = BufferEntry.class.getDeclaredMethod("add", long.class, Object.class);
-        mTake = BufferEntry.class.getDeclaredMethod("take", long.class, int.class);
+        mAdd = BufferEntry.class.getDeclaredMethod("setIfAbsent", long.class, Object.class);
+        mTake = BufferEntry.class.getDeclaredMethod("getIfPresent", long.class, int.class);
         idField.setAccessible(true);
         valueField.setAccessible(true);
         mAdd.setAccessible(true);

@@ -1,5 +1,6 @@
 package com.github.kahalemakai.whirlpool;
 
+import lombok.Getter;
 import lombok.val;
 import sun.misc.Contended;
 import sun.misc.Unsafe;
@@ -10,6 +11,7 @@ import java.util.concurrent.locks.ReentrantLock;
 class BufferEntry<T> {
 
     private static final long WAITING_INTERVAL = 50;
+    private static final long INVALID_TIMESTAMP = Long.MAX_VALUE;
 
     private static final Unsafe UNSAFE;
     static {
@@ -26,10 +28,15 @@ class BufferEntry<T> {
         VALUE_OFFSET = UnsafeManager.getOffset(BufferEntry.class, "value");
     }
 
-    @Contended("entry")
+    @Contended
     private volatile long id;
-    @Contended("entry")
+    @Getter
+    @Contended
     private volatile T value;
+    @Getter
+    @Contended
+    private volatile long timestamp = INVALID_TIMESTAMP;
+
     private final ReentrantLock lock = new ReentrantLock(true);
     private final Condition signal = lock.newCondition();
 
@@ -41,13 +48,13 @@ class BufferEntry<T> {
         return new BufferEntry<>(id);
     }
 
-    public void set(long requestId, T element) throws InterruptedException {
-        if (add(requestId, element)) {
+    public void blockAndSet(long requestId, T element) throws InterruptedException {
+        if (set(requestId, element)) {
             return;
         }
         lock.lock();
         try {
-            while (!add(requestId, element)) {
+            while (!set(requestId, element)) {
                 signal.awaitNanos(WAITING_INTERVAL);
             }
         } finally {
@@ -56,15 +63,15 @@ class BufferEntry<T> {
         }
     }
 
-    public T get(long requestId, int bufferSize) throws InterruptedException {
-        T obj = take(requestId, bufferSize);
+    public T blockAndGet(long requestId, int bufferSize) throws InterruptedException {
+        T obj = get(requestId, bufferSize);
         if (obj != null) {
             return obj;
         }
         lock.lock();
         try {
             while (true) {
-                obj = take(requestId, bufferSize);
+                obj = get(requestId, bufferSize);
                 if (obj != null) {
                     break;
                 }
@@ -77,7 +84,7 @@ class BufferEntry<T> {
         }
     }
 
-    private T take(long requestId, int bufferSize) {
+    public T get(long requestId, int bufferSize) {
         if (requestId != id) {
             return null;
         }
@@ -89,13 +96,18 @@ class BufferEntry<T> {
         return obj;
     }
 
-    private boolean add(long requestId, T element) {
+    public boolean set(long requestId, T element) {
         if (requestId != -id) {
             return false;
         }
         UNSAFE.putObjectVolatile(this, VALUE_OFFSET, element);
         UNSAFE.putLongVolatile(this, ID_OFFSET, requestId);
+        this.timestamp = System.currentTimeMillis();
         return true;
+    }
+
+    boolean casId(long from, long to) {
+        return UNSAFE.compareAndSwapLong(this, ID_OFFSET, from, to);
     }
 
 }

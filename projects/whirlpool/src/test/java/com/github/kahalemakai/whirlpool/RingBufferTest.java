@@ -3,110 +3,138 @@ package com.github.kahalemakai.whirlpool;
 import lombok.val;
 import org.junit.Test;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicLong;
+
 import static org.junit.Assert.assertEquals;
 
 public class RingBufferTest {
 
+    private final int numThreads = 50;
+    private final int cycles = 1_000_000;
+
     @Test
     public void size() throws Exception {
         val maxSize = 100;
-        final RingBuffer<Integer> buffer = new RingBuffer<>(Integer.class, maxSize);
+        final RingBuffer<Integer> buffer = new RingBuffer<>(maxSize);
         for (int i = 0; i < maxSize; ++i) {
-            buffer.offer(i);
-            assertEquals(i + 1, buffer.availableElements());
+            buffer.put(i);
+            assertEquals(i + 1, buffer.size());
         }
         for (int i = 0; i < maxSize; ++i) {
-            int el = buffer.poll();
+            int el = buffer.take();
             assertEquals(i, el);
-            assertEquals(maxSize - 1 - i, buffer.availableElements());
+            assertEquals(maxSize - 1 - i, buffer.size());
         }
     }
-//
-//    @Test
-//    public void offerFails() throws Exception {
-//        final RingBuffer<Integer> buffer = new RingBuffer<>(Integer.class, 1);
-//        assertTrue(buffer.offer(0));
-//        assertFalse(buffer.offer(1));
-//    }
-//
-//    @Test
-//    public void pollFails() throws Exception {
-//        final RingBuffer<Integer> buffer = new RingBuffer<>(Integer.class, 0);
-//        assertNull(buffer.poll());
-//    }
-//
-//    @Test
-//    public void normalize() throws Exception {
-//        final RingBuffer<Integer> buffer = new RingBuffer<>(Integer.class, 17);
-//        val initialSteps = 3;
-//        val steps = buffer.getMaxSize() * 5 - 3;
-//        for (int i = 0; i < initialSteps; ++i) {
-//            buffer.offer(i);
-//        }
-//        for (int i = 0; i < steps; ++i) {
-//            buffer.offer(i);
-//            buffer.poll();
-//        }
-//        assertEquals(3, buffer.availableElements());
-//        buffer.normalizeHeadAndTail();
-//        val field = RingBuffer.class.getDeclaredField("headAndTail");
-//        field.setAccessible(true);
-//        final long headAndTail = field.getLong(buffer);
-//        val head = getHead(headAndTail);
-//        val tail = getTail(headAndTail);
-//        assertEquals(steps % buffer.getMaxSize(), head);
-//        assertEquals((steps + initialSteps) % buffer.getMaxSize(), tail);
-//        assertEquals(3, buffer.availableElements());
-//    }
-//
-//    private final int numThreads = 5;
-//    private final int cycles = 1_000_000;
-//
-//    @Test
-//    public void performance() throws Exception {
-////        Thread.sleep(5000);
-//        val maxSize = 32;
-//        final RingBuffer<Long> buffer = new RingBuffer<>(Long.class, maxSize);
-////        val executors = Executors.newFixedThreadPool(numThreads);
-//        val startSignal = new CountDownLatch(1);
-//        val endSignal = new CountDownLatch(numThreads);
-//        for (int i = 0; i < numThreads; ++i) {
-////            executors.submit(() -> {
-//            new Thread(() -> {
-//                try {
-//                    buffer.offer(Thread.currentThread().getId());
-//                    startSignal.await();
-//                } catch (InterruptedException e) {
-//                    e.printStackTrace();
-//                    throw new NullPointerException();
-//                }
-//                for (int j = 0; j < cycles; j++) {
-//                    val result = buffer.poll();
-//                    if (result == null) {
-//                        endSignal.countDown();
-//                        Thread.currentThread().interrupt();
-//                        throw new NullPointerException(
-//                                String.format("could not poll. thread: %d, cycle: %d",
-//                                        Thread.currentThread().getId(), j));
-//
-//                    }
-//                    val success = buffer.offer(result);
-//                    if (!success) {
-//                        endSignal.countDown();
-//                        Thread.currentThread().interrupt();
-//                        throw new NullPointerException(
-//                                String.format("could not offer. thread: %d, cycle: %d",
-//                                        Thread.currentThread().getId(), j));
-//                    }
-//                    Thread.yield();
-//                }
-//                endSignal.countDown();
-////            });
-//            }).start();
-//        }
-//        startSignal.countDown();
-//        endSignal.await();
-////        executors.shutdown();
-//    }
+
+    @Test
+    public void performanceCLQ() throws Exception {
+        val queue = new ConcurrentLinkedQueue<Integer>();
+        val startSignal = new CountDownLatch(1);
+        val endSignal = new CountDownLatch(numThreads);
+        val values = new HashSet<Integer>();
+        val counter = new AtomicLong();
+        for (int i = 0; i < numThreads; ++i) {
+            val idx = i;
+            new Thread(() -> {
+                try {
+                    queue.add(idx);
+                    startSignal.await();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                    throw new NullPointerException();
+                }
+                for (int j = 0; j < cycles; j++) {
+                    val result = queue.poll();
+                    values.add(result);
+                    counter.getAndIncrement();
+                    queue.add(result);
+                    Thread.yield();
+                }
+                endSignal.countDown();
+            }).start();
+        }
+        startSignal.countDown();
+        endSignal.await();
+        assertEquals(numThreads * cycles, counter.getAndIncrement());
+        System.out.println(values);
+        assertEquals(numThreads, values.size());
+    }
+
+    @Test
+    public void performanceABQ() throws Exception {
+        val maxSize = 64;
+        val queue = new ArrayBlockingQueue<Integer>(maxSize, true);
+        val startSignal = new CountDownLatch(1);
+        val endSignal = new CountDownLatch(numThreads);
+        val values = new HashSet<Integer>();
+        val counter = new AtomicLong();
+        for (int i = 0; i < numThreads; ++i) {
+            val idx = i;
+            new Thread(() -> {
+                try {
+                    queue.add(idx);
+                    startSignal.await();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                    throw new NullPointerException();
+                }
+                for (int j = 0; j < cycles; j++) {
+                    val result = queue.poll();
+                    values.add(result);
+                    counter.getAndIncrement();
+                    queue.add(result);
+                    Thread.yield();
+                }
+                endSignal.countDown();
+            }).start();
+        }
+        startSignal.countDown();
+        endSignal.await();
+        assertEquals(numThreads * cycles, counter.getAndIncrement());
+        assertEquals(numThreads, values.size());
+    }
+
+    @Test
+    public void performance() throws Exception {
+        val maxSize = 64;
+        final RingBuffer<Integer> buffer = new RingBuffer<>(maxSize);
+        val startSignal = new CountDownLatch(1);
+        val endSignal = new CountDownLatch(numThreads);
+        val values = Collections.newSetFromMap(new ConcurrentHashMap<>());
+        val counter = new AtomicLong();
+        for (int i = 0; i < numThreads; ++i) {
+            val idx = i;
+            val t = new Thread(() -> {
+                try {
+                    buffer.put(idx);
+                    startSignal.await();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                    throw new NullPointerException();
+                }
+                for (int j = 0; j < cycles; j++) {
+                    val result = buffer.take();
+                    values.add(result);
+                    counter.getAndIncrement();
+                    buffer.put(result);
+                    Thread.yield();
+                }
+                endSignal.countDown();
+            });
+            t.setName("perf-test-"+i);
+            t.start();
+        }
+        startSignal.countDown();
+        endSignal.await();
+        assertEquals(numThreads * cycles, counter.getAndIncrement());
+        assertEquals(numThreads, values.size());
+    }
 
 }

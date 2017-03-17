@@ -89,7 +89,7 @@ class PoolEntry<T> {
             return UNSAFE.objectFieldOffset(
                     PoolEntry.class.getDeclaredField("inUse"));
         } catch (NoSuchFieldException e) {
-            throw new NullPointerException("could not get field offset for inUse");
+            throw new NullPointerException("could not blockAndGet field offset for inUse");
         }
     }
 

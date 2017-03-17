@@ -20,7 +20,7 @@ class UnsafeManager {
             return UNSAFE.objectFieldOffset(
                     clazz.getDeclaredField(fieldName));
         } catch (NoSuchFieldException e) {
-            throw new NullPointerException("could not get field offset for " + fieldName);
+            throw new NullPointerException("could not blockAndGet field offset for " + fieldName);
         }
     }
 
